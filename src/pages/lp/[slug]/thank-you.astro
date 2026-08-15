@@ -1,0 +1,145 @@
+---
+// Precision Conversion Ledger: thank-you route fires conversion once, then shows the five-slot inventory grid.
+import InventoryGrid from "../../../components/InventoryGrid.astro";
+import FunnelLayout from "../../../layouts/FunnelLayout.astro";
+import {
+  funnelConfig,
+  getContactStep,
+  getStepPath,
+  inventoryEnabled,
+  isKnownSlug,
+  isServedZip,
+} from "../../../lib/config";
+import { markLeadStatus } from "../../../lib/lead-repository";
+import { getOrCreateFunnelSession, saveFunnelSession } from "../../../lib/session";
+import {
+  buildBrowserAdvancedMatching,
+  dispatchServerEvent,
+  premintTrackingEvent,
+  toBrowserEnvelope,
+} from "../../../lib/tracking";
+import type { BrowserEventEnvelope } from "../../../types/funnel";
+
+export const prerender = false;
+
+if (!isKnownSlug(Astro.params.slug)) return Astro.redirect("/404", 302);
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+Astro.response.headers.set("Cache-Control", "private, no-store, max-age=0");
+
+const session = await getOrCreateFunnelSession(Astro.request, Astro.cookies);
+if (
+  session.leadStatus !== "delivered" ||
+  !session.leadId ||
+  !session.contact ||
+  !session.consent?.accepted ||
+  !isServedZip(session.zip)
+) {
+  return Astro.redirect(getStepPath(getContactStep()), 302);
+}
+
+const pageViewEvent = await premintTrackingEvent(
+  session,
+  "PageView",
+  Astro.url.toString(),
+  { funnel_slug: funnelConfig.funnel.slug, page_type: "thank-you" },
+);
+Astro.locals.cfContext.waitUntil(dispatchServerEvent(pageViewEvent, session, Astro.request));
+
+let conversion: BrowserEventEnvelope | undefined;
+let googleConversion:
+  | {
+      leadId: string;
+      value: number;
+      currency: string;
+      userData: {
+        country: string;
+        zip: string;
+        first_name: string;
+        last_name: string;
+        phone: string;
+        email: string;
+      };
+    }
+  | undefined;
+if (!session.conversionFiredAt) {
+  const conversionData = {
+    value: session.conversionValue ?? funnelConfig.meta.defaultConversionValue,
+    currency: funnelConfig.meta.currency,
+    funnel_slug: funnelConfig.funnel.slug,
+    lead_id: session.leadId,
+  };
+  const conversionEvent = await premintTrackingEvent(
+    session,
+    funnelConfig.meta.conversionEventName,
+    Astro.url.toString(),
+    conversionData,
+  );
+
+  session.conversionEventId = conversionEvent.eventId;
+  session.conversionFiredAt = new Date().toISOString();
+  await saveFunnelSession(session);
+  await markLeadStatus(session.leadId, "delivered", {
+    conversionEventId: conversionEvent.eventId,
+    deliveredAt: session.deliveredToGhlAt,
+  });
+  Astro.locals.cfContext.waitUntil(dispatchServerEvent(conversionEvent, session, Astro.request));
+  conversion = toBrowserEnvelope(conversionEvent);
+  googleConversion = {
+    leadId: session.leadId,
+    value: session.conversionValue ?? funnelConfig.meta.defaultConversionValue,
+    currency: funnelConfig.meta.currency,
+    userData: {
+      country: (session.geo.country ?? funnelConfig.validation.defaultCountry).toUpperCase(),
+      zip: session.zip ?? "",
+      first_name: session.contact.firstName,
+      last_name: session.contact.lastName,
+      phone: session.contact.phone,
+      email: session.contact.email.toLowerCase(),
+    },
+  };
+}
+
+const showInventory = inventoryEnabled(funnelConfig);
+const pageTitle = showInventory ? funnelConfig.inventory.headline : funnelConfig.thankYou.headline;
+const pageDescription = showInventory
+  ? funnelConfig.inventory.subheadline
+  : funnelConfig.thankYou.message;
+---
+
+<FunnelLayout
+  title={pageTitle}
+  description={pageDescription}
+  metaTracking={{
+    advancedMatching: buildBrowserAdvancedMatching(session),
+    pageView: toBrowserEnvelope(pageViewEvent),
+    conversion,
+  }}
+  googleConversion={googleConversion}
+>
+  <section class="decision-panel outcome-panel decision-panel--inventory">
+    <header class="question-header">
+      <p class="system-label">Request confirmed</p>
+      <h1 class="question-title">{funnelConfig.thankYou.headline}</h1>
+      <p class="question-support">{funnelConfig.thankYou.message}</p>
+    </header>
+
+    {
+      showInventory ? (
+        <InventoryGrid showHeader={false} />
+      ) : (
+        <div class="response-area">
+          <div class="confirmation-mark" aria-hidden="true">✓</div>
+          <p class="privacy-note">Keep the submitted phone available for the local showroom follow-up.</p>
+        </div>
+      )
+    }
+
+    {
+      showInventory && funnelConfig.inventory.pageUrl && (
+        <p class="inventory-page-link">
+          <a class="text-button" href={funnelConfig.inventory.pageUrl}>View full inventory page</a>
+        </p>
+      )
+    }
+  </section>
+</FunnelLayout>

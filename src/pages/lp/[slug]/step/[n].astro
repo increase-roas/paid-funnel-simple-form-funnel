@@ -1,0 +1,383 @@
+---
+// Precision Conversion Ledger: server-rendered numeric step route with one configurable decision and pre-minted Meta events per page.
+import ContactForm from "../../../../components/ContactForm.astro";
+import PreloadedFunnel from "../../../../components/PreloadedFunnel.astro";
+import QuestionForm from "../../../../components/QuestionForm.astro";
+import SimpleZipForm from "../../../../components/SimpleZipForm.astro";
+import TrustBlock from "../../../../components/TrustBlock.astro";
+import ValidationInterstitial from "../../../../components/ValidationInterstitial.astro";
+import FunnelLayout from "../../../../layouts/FunnelLayout.astro";
+import {
+  funnelConfig,
+  getContactStep,
+  getStep,
+  getTotalSteps,
+  isKnownSlug,
+} from "../../../../lib/config";
+import { getOrCreateFunnelSession } from "../../../../lib/session";
+import {
+  buildBrowserAdvancedMatching,
+  dispatchServerEvent,
+  premintTrackingEvent,
+  toBrowserEnvelope,
+} from "../../../../lib/tracking";
+
+export const prerender = false;
+
+const slug = Astro.params.slug;
+const stepNumber = Number.parseInt(Astro.params.n ?? "", 10);
+const step = getStep(stepNumber);
+
+if (!isKnownSlug(slug) || !step) {
+  return Astro.redirect("/404", 302);
+}
+
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+Astro.response.headers.set("Cache-Control", "private, no-store, max-age=0");
+
+const session = await getOrCreateFunnelSession(Astro.request, Astro.cookies);
+const totalSteps = getTotalSteps();
+const eventData = {
+  funnel_slug: funnelConfig.funnel.slug,
+  step_number: step.number,
+  step_key: step.key,
+};
+const pageViewEvent = await premintTrackingEvent(
+  session,
+  "PageView",
+  Astro.url.toString(),
+  eventData,
+);
+const viewContentEvent = await premintTrackingEvent(
+  session,
+  "ViewContent",
+  Astro.url.toString(),
+  eventData,
+);
+Astro.locals.cfContext.waitUntil(dispatchServerEvent(pageViewEvent, session, Astro.request));
+
+const preloadedTrackingSteps: Array<{
+  stepNumber: number;
+  stepKey: string;
+  pageView: ReturnType<typeof toBrowserEnvelope>;
+  viewContent: ReturnType<typeof toBrowserEnvelope>;
+}> = [];
+
+if (step.kind === "zip") {
+  for (let futureNumber = 2; futureNumber <= totalSteps; futureNumber += 1) {
+    const futureStep = getStep(futureNumber);
+    if (!futureStep) continue;
+    const futureUrl = new URL(`/lp/${funnelConfig.funnel.slug}/step/${futureNumber}`, Astro.url).toString();
+    const futureData = {
+      funnel_slug: funnelConfig.funnel.slug,
+      step_number: futureNumber,
+      step_key: futureStep.key,
+      preloaded: true,
+    };
+    const futurePageView = await premintTrackingEvent(
+      session,
+      "PageView",
+      futureUrl,
+      futureData,
+    );
+    const futureViewContent = await premintTrackingEvent(
+      session,
+      "ViewContent",
+      futureUrl,
+      futureData,
+    );
+    preloadedTrackingSteps.push({
+      stepNumber: futureNumber,
+      stepKey: futureStep.key,
+      pageView: toBrowserEnvelope(futurePageView),
+      viewContent: toBrowserEnvelope(futureViewContent),
+    });
+  }
+}
+
+const errorCode = Astro.url.searchParams.get("error");
+const errorMessages: Record<string, string> = {
+  zip: "Enter a valid 5-digit ZIP code.",
+  area: "That ZIP code is not inside the current service area.",
+  answer: "Choose an answer before continuing.",
+  contact: "Check the contact details and try again.",
+  phone: "Enter a valid mobile phone number.",
+  email: "Enter a valid non-disposable email address.",
+  consent: "Consent is required before the request can be submitted.",
+  duplicate: "A recent request already exists for this contact information.",
+  temporary: "The request could not be delivered. Please try again.",
+};
+const errorMessage = errorCode ? errorMessages[errorCode] : undefined;
+
+let title = funnelConfig.offer.headline;
+let description = funnelConfig.offer.subheadline;
+const geoHeadline = session.geo.city && session.geo.state
+  ? funnelConfig.geoH1Template
+      .replaceAll("{city}", session.geo.city)
+      .replaceAll("{state}", session.geo.state)
+  : funnelConfig.offer.headline;
+
+if (step.kind === "question") {
+  const question = funnelConfig.surveyQuestions[step.questionIndex];
+  title = question?.text ?? title;
+  description = question?.helpText ?? funnelConfig.funnel.qualifyingLine;
+}
+
+if (step.kind === "contact") {
+  title = funnelConfig.approvedFramingHeadline;
+  description = funnelConfig.contact.headline;
+}
+
+if (step.kind === "interstitial") {
+  title = "Validating results";
+  description = "Checking service availability and preparing the final request step.";
+}
+
+if (step.kind === "book") {
+  title = "Book a call";
+  description = "Choose a time with the local showroom team.";
+}
+
+const action = `/api/funnel/${funnelConfig.funnel.slug}/step/${step.number}`;
+const simpleEntry = funnelConfig.funnel.entryStyle === "simple";
+---
+
+<FunnelLayout
+  title={title}
+  description={description}
+  currentStep={step.number}
+  totalSteps={totalSteps}
+  hasSavedData={session.completedStep > 0}
+  metaTracking={{
+    advancedMatching: buildBrowserAdvancedMatching(session),
+    pageView: toBrowserEnvelope(pageViewEvent),
+    viewContent: toBrowserEnvelope(viewContentEvent),
+  }}
+>
+  <section
+    class:list={[
+      "decision-panel",
+      step.kind === "zip" && !simpleEntry && "decision-panel--hero",
+      step.kind === "zip" && simpleEntry && "decision-panel--simple",
+      step.kind === "question" && "decision-panel--survey",
+    ]}
+    data-step-panel
+    data-step-number={step.number}
+    data-step-key={step.key}
+    data-step-title={title}
+  >
+    {
+      step.kind === "zip" && simpleEntry && (
+        <SimpleZipForm
+          action={action}
+          zipValue={session.zip ?? session.geo.postalCode ?? ""}
+          errorMessage={errorMessage}
+        />
+      )
+    }
+
+    {
+      step.kind === "zip" && !simpleEntry && (
+        <div class="hero-entry">
+          <div class="hero-entry__first">
+            <p class="hero-entry__wordmark">{funnelConfig.client.name}</p>
+            <h1 class="hero-entry__title">{geoHeadline}</h1>
+            <p class="hero-entry__geo">{funnelConfig.offer.subheadline}</p>
+          </div>
+
+          <form id="zip-form" method="post" action={action} data-funnel-form class="hero-entry__form">
+            <input type="hidden" name="tabId" value="" data-tab-id />
+            <p class="error-message" data-client-error role="alert" hidden={!errorMessage}>
+              {errorMessage}
+            </p>
+            <div class="hero-entry__zip-block">
+              <label class="field-label" for="zip-input">Enter ZIP Code</label>
+              <span class="hero-entry__zip">
+                <svg class="hero-entry__pin" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"
+                  ></path>
+                </svg>
+                <input
+                  class="text-input text-input--zip"
+                  id="zip-input"
+                  type="text"
+                  name="zip"
+                  value={session.zip ?? session.geo.postalCode ?? ""}
+                  inputmode="numeric"
+                  autocomplete="postal-code"
+                  pattern="[0-9]{5}"
+                  minlength="5"
+                  maxlength="5"
+                  placeholder="Enter ZIP Code"
+                />
+              </span>
+              <button class="primary-button" type="submit">{funnelConfig.funnel.ctaLabel}</button>
+              <p class="hero-entry__disclaimer">Free, no-obligation. Local inventory only.</p>
+            </div>
+          </form>
+
+          <section class="why-strip">
+            <h2 class="why-strip__title">Hot Tub &amp; Swim Spa Options</h2>
+            <p class="why-strip__sub">See models that are actually in stock near you</p>
+            <ul class="why-strip__list">
+              <li class="why-strip__item">Completely transforms your backyard into your own place to rejuvenate</li>
+              <li class="why-strip__item">Ready to rejuvenate in as little as 1-3 days<sup>[2]</sup></li>
+              <li class="why-strip__item">Unlimited jet configurations, sizes, and finishes</li>
+              <li class="why-strip__item">Plug-and-play options available — no major construction needed</li>
+              <li class="why-strip__item">Durable, energy-efficient models built to last<sup>[3]</sup></li>
+              <li class="why-strip__item">No permits required for most installs</li>
+              <li class="why-strip__item">Free in-home site evaluation<sup>[4]</sup></li>
+            </ul>
+            <img
+              class="why-strip__photo"
+              src="/images/spa-lifestyle.png"
+              alt="People relaxing in a backyard hot tub"
+              width="1024"
+              height="768"
+              loading="lazy"
+              decoding="async"
+            />
+            <p class="why-strip__notes">
+              [2] Timing varies by model, site, and current inventory.
+              [3] Features vary by model.
+              [4] Offered after the request, where available.
+            </p>
+          </section>
+
+          <section class="entry-story">
+            <h2 class="entry-story__title">How It Works</h2>
+            <p class="entry-story__copy">Three quick steps between you and the right spa. No pressure, no spam.</p>
+          </section>
+
+          <div class="entry-steps">
+            <article class="entry-card">
+              <div class="entry-card__head">
+                <span class="entry-card__num">1</span>
+                <svg class="entry-card__icon" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="5" width="22" height="24" rx="3"></rect>
+                  <path d="M11 12h8M11 17h12M11 22h6"></path>
+                  <path d="M22 21l2 2 4-4"></path>
+                </svg>
+                <h3 class="entry-card__title">Answer a few quick questions</h3>
+              </div>
+              <p class="entry-card__copy">Tell us how you'll use it — seating, jets, space. Under a minute.</p>
+            </article>
+            <article class="entry-card">
+              <div class="entry-card__head">
+                <span class="entry-card__num">2</span>
+                <svg class="entry-card__icon" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 4l12 12-9 9L8 13V4h9z" transform="rotate(45 17 17)"></path>
+                  <circle cx="13" cy="13" r="2"></circle>
+                </svg>
+                <h3 class="entry-card__title">Get the local price range</h3>
+              </div>
+              <p class="entry-card__copy">We match current showroom models that fit, with real local pricing.</p>
+            </article>
+            <article class="entry-card">
+              <div class="entry-card__head">
+                <span class="entry-card__num">3</span>
+                <svg class="entry-card__icon" viewBox="0 0 34 34" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="7" width="12" height="20" rx="2"></rect>
+                  <rect x="19" y="7" width="12" height="20" rx="2"></rect>
+                  <path d="M7.5 17l2 2 3.5-3.5"></path>
+                </svg>
+                <h3 class="entry-card__title">See every option before you buy</h3>
+              </div>
+              <p class="entry-card__copy">Compare models side by side and pick the exact fit for the people who'll use it.</p>
+            </article>
+          </div>
+
+          <figure class="entry-quote">
+            <blockquote class="entry-quote__text">Pricing is shown after the ZIP check so the range matches the local showroom.</blockquote>
+            <figcaption class="entry-quote__attrib">Local showroom pricing</figcaption>
+          </figure>
+
+          <div class="repeat-cta">
+            <h2 class="repeat-cta__title">See what’s in stock</h2>
+            <button class="primary-button" type="button" data-repeat-cta>{funnelConfig.funnel.ctaLabel}</button>
+          </div>
+        </div>
+      )
+    }
+
+    {
+      step.kind === "question" && (() => {
+        const question = funnelConfig.surveyQuestions[step.questionIndex];
+        if (!question) return null;
+        return (
+          <>
+            <header class="question-header">
+              <h1 class="question-title">{question.text}</h1>
+              {question.helpText && <p class="question-support">{question.helpText}</p>}
+            </header>
+            <div class="response-area">
+              {errorMessage && <p class="error-message" role="alert">{errorMessage}</p>}
+              <QuestionForm
+                question={question}
+                action={action}
+                savedAnswer={session.answers[question.id]}
+                ctaLabel={funnelConfig.funnel.ctaLabel}
+              />
+            </div>
+          </>
+        );
+      })()
+    }
+
+    {
+      step.kind === "interstitial" && (
+        <ValidationInterstitial nextPath={`/lp/${funnelConfig.funnel.slug}/step/${getContactStep()}`} />
+      )
+    }
+
+    {
+      step.kind === "contact" && (
+        <div class="simple-form-shell">
+          <header class="simple-form-shell__header">
+            <h1 class="simple-form-shell__title">{funnelConfig.approvedFramingHeadline}</h1>
+            <p class="simple-form-shell__subtitle">{funnelConfig.contact.headline}</p>
+          </header>
+          <div class="simple-form-card">
+            {errorMessage && <p class="error-message" role="alert">{errorMessage}</p>}
+            <ContactForm
+              action={action}
+              savedContact={session.contact}
+              consentAccepted={session.consent?.accepted}
+            />
+          </div>
+          <TrustBlock eyebrow={funnelConfig.trust.eyebrow} statement={funnelConfig.trust.statement} />
+          <button class="back-link" type="button" onclick="history.back()">Go back</button>
+        </div>
+      )
+    }
+
+    {
+      step.kind === "book" && funnelConfig.calendarUrl && (
+        <>
+          <header class="question-header">
+            <p class="system-label">Schedule</p>
+            <h1 class="question-title">Pick a time that works.</h1>
+            <p class="question-support">Choose a slot with the local showroom team. Your request is already in.</p>
+          </header>
+          <div class="response-area">
+            <iframe
+              class="calendar-embed"
+              src={funnelConfig.calendarUrl}
+              title="Book a call"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+            ></iframe>
+            <form method="post" action={action} data-funnel-form class="response-area">
+              <input type="hidden" name="tabId" value="" data-tab-id />
+              <button class="primary-button" type="submit">I booked a time</button>
+            </form>
+            <button class="back-link" type="button" onclick="history.back()">Go back</button>
+          </div>
+        </>
+      )
+    }
+  </section>
+  {step.kind === "zip" && <PreloadedFunnel session={session} trackingSteps={preloadedTrackingSteps} />}
+</FunnelLayout>

@@ -1,0 +1,14 @@
+---
+// Precision Conversion Ledger: factual process assurance without fabricated reviews, badges, or decorative claims.
+interface Props {
+  eyebrow: string;
+  statement: string;
+}
+
+const { eyebrow, statement } = Astro.props;
+---
+
+<aside class="trust-block" aria-label={eyebrow}>
+  <p class="trust-block__eyebrow">{eyebrow}</p>
+  <p class="trust-block__statement">{statement}</p>
+</aside>

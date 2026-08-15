@@ -1,0 +1,49 @@
+---
+import { funnelConfig } from "../lib/config";
+
+interface Props {
+  action: string;
+  zipValue?: string;
+  errorMessage?: string;
+}
+
+const { action, zipValue = "", errorMessage } = Astro.props;
+---
+
+<section class="simple-form-shell">
+  <header class="simple-form-shell__header">
+    <h1 class="simple-form-shell__title">{funnelConfig.offer.headline}</h1>
+    <p class="simple-form-shell__subtitle">{funnelConfig.offer.subheadline}</p>
+  </header>
+
+  <form method="post" action={action} data-funnel-form class="simple-form-card">
+    <input type="hidden" name="tabId" value="" data-tab-id />
+    <p class="error-message" data-client-error role="alert" hidden={!errorMessage}>
+      {errorMessage}
+    </p>
+
+    <label class="field-label simple-field">
+      <span class="simple-field__icon" aria-hidden="true">📍</span>
+      <input
+        class="text-input simple-field__input"
+        type="text"
+        name="zip"
+        value={zipValue}
+        inputmode="numeric"
+        autocomplete="postal-code"
+        pattern="[0-9]{5}"
+        minlength="5"
+        maxlength="5"
+        placeholder="ZIP code"
+        required
+      />
+    </label>
+
+    <button class="primary-button simple-form-card__submit" type="submit">
+      {funnelConfig.funnel.ctaLabel}
+    </button>
+    <p class="simple-form-card__note">Free, no-obligation. Local inventory only.</p>
+  </form>
+
+  <p class="simple-form-trust">Loved by thousands of businesses, big and small</p>
+</section>

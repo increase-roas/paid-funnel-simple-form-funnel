@@ -1,0 +1,51 @@
+---
+// Precision Conversion Ledger: dedicated no-conversion disqualification route with one internal recovery action.
+import FunnelLayout from "../../../layouts/FunnelLayout.astro";
+import { funnelConfig, getStepPath, isKnownSlug } from "../../../lib/config";
+import { getOrCreateFunnelSession } from "../../../lib/session";
+import {
+  buildBrowserAdvancedMatching,
+  dispatchServerEvent,
+  premintTrackingEvent,
+  toBrowserEnvelope,
+} from "../../../lib/tracking";
+
+export const prerender = false;
+
+if (!isKnownSlug(Astro.params.slug)) return Astro.redirect("/404", 302);
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+Astro.response.headers.set("Cache-Control", "private, no-store, max-age=0");
+
+const session = await getOrCreateFunnelSession(Astro.request, Astro.cookies);
+const pageViewEvent = await premintTrackingEvent(
+  session,
+  "PageView",
+  Astro.url.toString(),
+  { funnel_slug: funnelConfig.funnel.slug, page_type: "out-of-area" },
+);
+Astro.locals.cfContext.waitUntil(dispatchServerEvent(pageViewEvent, session, Astro.request));
+---
+
+<FunnelLayout
+  title={funnelConfig.outOfArea.headline}
+  description={funnelConfig.outOfArea.message}
+  metaTracking={{
+    advancedMatching: buildBrowserAdvancedMatching(session),
+    pageView: toBrowserEnvelope(pageViewEvent),
+  }}
+>
+  <section class="decision-panel outcome-panel outcome-panel--exception">
+    <header class="question-header">
+      <p class="system-label system-label--exception">Service area exception</p>
+      <h1 class="question-title">{funnelConfig.outOfArea.headline}</h1>
+      <p class="question-support">{funnelConfig.outOfArea.message}</p>
+    </header>
+    <div class="response-area">
+      <div class="exception-ledger" role="status">
+        <span class="exception-ledger__code">Outside coverage</span>
+        <p class="exception-ledger__detail">ZIP {session.zip ?? "provided"} is not eligible for this local request.</p>
+      </div>
+      <a class="primary-button" href={getStepPath(1)}>Try a Different ZIP Code</a>
+    </div>
+  </section>
+</FunnelLayout>

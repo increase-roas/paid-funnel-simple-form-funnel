@@ -1,0 +1,82 @@
+---
+// Precision Conversion Ledger: Google conversion payloads share the guarded thank-you condition and never render on refresh after the one-time conversion is recorded.
+interface Props {
+  measurementId?: string;
+  enhancedConversions: boolean;
+  leadId: string;
+  value: number;
+  currency: string;
+  userData: {
+    country: string;
+    zip: string;
+    first_name: string;
+    last_name: string;
+    phone: string;
+    email: string;
+  };
+}
+
+const payload = Astro.props;
+const serialized = JSON.stringify(payload).replace(/</g, "\\u003c");
+---
+
+<script is:inline set:html={`
+  (() => {
+    const conversion = ${serialized};
+    const ready = window.__paidFunnelRuntimeReady || Promise.resolve({ blocked: false });
+    ready.then((runtime) => {
+      if (runtime.blocked) return;
+      const eventKey = 'paid_funnel_google_conversion:' + conversion.leadId;
+      if (sessionStorage.getItem(eventKey) === '1') return;
+      sessionStorage.setItem(eventKey, '1');
+
+      if (conversion.enhancedConversions) {
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: 'enhanced_conversion_data',
+          country: conversion.userData.country,
+          zip: conversion.userData.zip,
+          first_name: conversion.userData.first_name,
+          last_name: conversion.userData.last_name,
+          phone: conversion.userData.phone,
+          email: conversion.userData.email,
+          user_data: {
+            email: conversion.userData.email,
+            phone_number: conversion.userData.phone,
+            address: {
+              first_name: conversion.userData.first_name,
+              last_name: conversion.userData.last_name,
+              postal_code: conversion.userData.zip,
+              country: conversion.userData.country,
+            },
+          },
+        });
+        window.gtag?.('set', 'user_data', {
+          email: conversion.userData.email,
+          phone_number: conversion.userData.phone,
+          address: {
+            first_name: conversion.userData.first_name,
+            last_name: conversion.userData.last_name,
+            postal_code: conversion.userData.zip,
+            country: conversion.userData.country,
+          },
+        });
+      }
+
+      if (conversion.measurementId) {
+        window.dataLayer.push({
+          event: 'generate_lead',
+          value: conversion.value,
+          currency: conversion.currency,
+          lead_id: conversion.leadId,
+        });
+        window.gtag?.('event', 'generate_lead', {
+          value: conversion.value,
+          currency: conversion.currency,
+          lead_id: conversion.leadId,
+          send_to: conversion.measurementId,
+        });
+      }
+    });
+  })();
+`}></script>

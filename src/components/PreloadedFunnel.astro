@@ -1,0 +1,380 @@
+---
+// Precision Conversion Ledger: all remaining decisions are server-rendered up front, then revealed instantly while ordered background requests preserve partial lead data.
+import ContactForm from "./ContactForm.astro";
+import QuestionForm from "./QuestionForm.astro";
+import TrustBlock from "./TrustBlock.astro";
+import ValidationInterstitial from "./ValidationInterstitial.astro";
+import { funnelConfig, getBookStep, getContactStep, getInterstitialStep, getStepPath, getTotalSteps } from "../lib/config";
+import type { BrowserEventEnvelope, FunnelSession } from "../types/funnel";
+
+interface TrackingStep {
+  stepNumber: number;
+  stepKey: string;
+  pageView: BrowserEventEnvelope;
+  viewContent: BrowserEventEnvelope;
+}
+
+interface Props {
+  session: FunnelSession;
+  trackingSteps: TrackingStep[];
+}
+
+const { session, trackingSteps } = Astro.props;
+const totalSteps = getTotalSteps();
+const interstitialStep = getInterstitialStep();
+const contactStep = getContactStep();
+const bookStep = getBookStep();
+const clientConfig = {
+  slug: funnelConfig.funnel.slug,
+  pixelId: funnelConfig.meta.pixelId,
+  viewContentDelayMs: funnelConfig.meta.viewContentDelayMs,
+  totalSteps,
+  interstitialStep,
+  contactStep,
+  bookStep,
+  progressStyle: funnelConfig.progressStyle,
+  advancedMatching: {
+    external_id: session.sessionId,
+    ...(session.zip ? { zp: session.zip } : {}),
+    ...(session.geo.city ? { ct: session.geo.city } : {}),
+    ...(session.geo.state ? { st: session.geo.state } : {}),
+    ...(session.geo.country ? { country: session.geo.country } : {}),
+  },
+  trackingSteps,
+};
+const serialized = JSON.stringify(clientConfig).replace(/</g, "\\u003c");
+---
+
+<div data-preloaded-funnel aria-hidden="true">
+  {
+    funnelConfig.surveyQuestions.map((question, questionIndex) => {
+      const stepNumber = questionIndex + 2;
+      const action = `/api/funnel/${funnelConfig.funnel.slug}/step/${stepNumber}`;
+      return (
+        <section
+          class="decision-panel decision-panel--survey preloaded-step"
+          data-step-panel
+          data-step-number={stepNumber}
+          data-step-key={question.id}
+          data-step-title={question.text}
+          hidden
+          inert
+        >
+          <header class="question-header">
+            <h1 class="question-title">{question.text}</h1>
+            {question.helpText && <p class="question-support">{question.helpText}</p>}
+          </header>
+          <div class="response-area">
+            <p class="error-message" data-client-error role="alert" hidden></p>
+            <QuestionForm
+              question={question}
+              action={action}
+              savedAnswer={session.answers[question.id]}
+              ctaLabel={funnelConfig.funnel.ctaLabel}
+            />
+          </div>
+        </section>
+      );
+    })
+  }
+
+  {
+    interstitialStep !== null && (
+      <section
+        class="decision-panel preloaded-step"
+        data-step-panel
+        data-step-number={interstitialStep}
+        data-step-key="validation"
+        data-step-title="Validating results"
+        hidden
+        inert
+      >
+        <ValidationInterstitial nextPath={getStepPath(contactStep)} managed />
+      </section>
+    )
+  }
+
+  <section
+    class="decision-panel preloaded-step"
+    data-step-panel
+    data-step-number={contactStep}
+    data-step-key="contact"
+    data-step-title={funnelConfig.approvedFramingHeadline}
+    hidden
+    inert
+  >
+    <div class="simple-form-shell">
+      <header class="simple-form-shell__header">
+        <h1 class="simple-form-shell__title">{funnelConfig.approvedFramingHeadline}</h1>
+        <p class="simple-form-shell__subtitle">{funnelConfig.contact.headline}</p>
+      </header>
+      <div class="simple-form-card">
+        <p class="error-message" data-client-error role="alert" hidden></p>
+        <ContactForm
+          action={`/api/funnel/${funnelConfig.funnel.slug}/step/${contactStep}`}
+          savedContact={session.contact}
+          consentAccepted={session.consent?.accepted}
+        />
+      </div>
+      <TrustBlock eyebrow={funnelConfig.trust.eyebrow} statement={funnelConfig.trust.statement} />
+      <button class="back-link" type="button" data-preloaded-back>Go back</button>
+    </div>
+  </section>
+
+  {
+    bookStep !== null && funnelConfig.calendarUrl && (
+      <section
+        class="decision-panel preloaded-step"
+        data-step-panel
+        data-step-number={bookStep}
+        data-step-key="book"
+        data-step-title="Book a call"
+        hidden
+        inert
+      >
+        <header class="question-header">
+          <p class="system-label">Schedule</p>
+          <h1 class="question-title">Pick a time that works.</h1>
+          <p class="question-support">Choose a slot with the local showroom team. Your request is already in.</p>
+        </header>
+        <div class="response-area">
+          <iframe
+            class="calendar-embed"
+            src={funnelConfig.calendarUrl}
+            title="Book a call"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+          <form method="post" action={`/api/funnel/${funnelConfig.funnel.slug}/step/${bookStep}`} data-funnel-form class="response-area">
+            <input type="hidden" name="tabId" value="" data-tab-id />
+            <button class="primary-button" type="submit">I booked a time</button>
+          </form>
+          <button class="back-link" type="button" data-preloaded-back>Go back</button>
+        </div>
+      </section>
+    )
+  }
+</div>
+
+<script is:inline set:html={`
+  (() => {
+    const preload = ${serialized};
+    const errorMessages = {
+      zip: 'Enter a valid 5-digit ZIP code.',
+      area: 'That ZIP code is not inside the current service area.',
+      answer: 'Choose an answer before continuing.',
+      contact: 'Check the contact details and try again.',
+      phone: 'Enter a valid mobile phone number.',
+      email: 'Enter a valid non-disposable email address.',
+      consent: 'Consent is required before the request can be submitted.',
+      duplicate: 'A recent request already exists for this contact information.',
+      temporary: 'The request could not be delivered. Please try again.',
+    };
+
+    const start = (runtime) => {
+      if (runtime.blocked || window.__paidFunnelPreloadedStarted) return;
+      window.__paidFunnelPreloadedStarted = true;
+      const panels = new Map();
+      document.querySelectorAll('[data-step-panel]').forEach((panel) => {
+        panels.set(Number(panel.dataset.stepNumber), panel);
+      });
+      const root = document.querySelector('[data-preloaded-funnel]');
+      root?.removeAttribute('aria-hidden');
+      let currentStep = 1;
+      let saveQueue = Promise.resolve();
+      let interstitialTimer;
+      let interstitialRotation;
+      const tracking = new Map(preload.trackingSteps.map((entry) => [entry.stepNumber, entry]));
+      const trackingFired = new Set(JSON.parse(sessionStorage.getItem('paid_funnel_preloaded_tracking') || '[]'));
+
+      const readCookie = (name) => document.cookie
+        .split('; ')
+        .find((row) => row.startsWith(name + '='))
+        ?.split('=')
+        .slice(1)
+        .join('=');
+
+      const notifyServer = (eventId, triggerServer) => {
+        void fetch('/api/meta/event', {
+          method: 'POST',
+          credentials: 'same-origin',
+          keepalive: true,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            eventId,
+            triggerServer,
+            fbp: readCookie('_fbp') || undefined,
+          }),
+        });
+      };
+
+      const fireMeta = (stepNumber) => {
+        const entry = tracking.get(stepNumber);
+        if (!entry || trackingFired.has(entry.pageView.eventId) || typeof window.fbq !== 'function') return;
+        window.__paidFunnelCancelViewContent?.();
+        window.fbq('init', preload.pixelId, preload.advancedMatching);
+        window.fbq('track', entry.pageView.eventName, entry.pageView.customData, { eventID: entry.pageView.eventId });
+        notifyServer(entry.pageView.eventId, true);
+        trackingFired.add(entry.pageView.eventId);
+        sessionStorage.setItem('paid_funnel_preloaded_tracking', JSON.stringify([...trackingFired]));
+
+        const timer = window.setTimeout(() => {
+          window.fbq('track', entry.viewContent.eventName, entry.viewContent.customData, { eventID: entry.viewContent.eventId });
+          notifyServer(entry.viewContent.eventId, true);
+        }, preload.viewContentDelayMs);
+        window.__paidFunnelCancelViewContent = () => window.clearTimeout(timer);
+      };
+
+      const updateProgress = (stepNumber) => {
+        const copy = document.querySelector('.progress-copy');
+        if (copy) copy.textContent = 'Step ' + stepNumber + ' of ' + preload.totalSteps;
+        document.querySelectorAll('.progress-segment').forEach((segment) => {
+          const number = Number(segment.dataset.segment);
+          segment.dataset.state = number < stepNumber ? 'complete' : number === stepNumber ? 'current' : 'pending';
+        });
+        const saved = document.querySelector('.saved-indicator');
+        if (saved) saved.textContent = stepNumber > 1 ? 'Progress saved' : 'Secure session';
+      };
+
+      const stopInterstitial = () => {
+        window.clearTimeout(interstitialTimer);
+        window.clearInterval(interstitialRotation);
+      };
+
+      const startInterstitial = () => {
+        stopInterstitial();
+        const panel = panels.get(preload.interstitialStep);
+        const copy = panel?.querySelector('[data-validation-copy]');
+        const meter = panel?.querySelector('.interstitial-meter span');
+        const messages = [
+          'Checking service availability in your area',
+          'Matching your answers with your local store',
+          'Preparing your personalized estimate request',
+        ];
+        let index = 0;
+        if (copy) copy.textContent = messages[0];
+        if (meter instanceof HTMLElement) {
+          meter.style.animation = 'none';
+          void meter.offsetWidth;
+          meter.style.animation = '';
+        }
+        window.__paidFunnelPush?.('validation_interstitial_visible');
+        interstitialRotation = window.setInterval(() => {
+          index = Math.min(index + 1, messages.length - 1);
+          if (copy) copy.textContent = messages[index];
+          if (index === messages.length - 1) window.clearInterval(interstitialRotation);
+        }, 1050);
+        interstitialTimer = window.setTimeout(() => {
+          showStep(preload.contactStep, true, true);
+        }, 3600);
+      };
+
+      const showError = (stepNumber, code) => {
+        const panel = panels.get(stepNumber);
+        const error = panel?.querySelector('[data-client-error]');
+        if (error) {
+          error.textContent = errorMessages[code] || errorMessages.temporary;
+          error.removeAttribute('hidden');
+        }
+      };
+
+      function showStep(stepNumber, pushHistory = true, fireTracking = true) {
+        const nextPanel = panels.get(stepNumber);
+        if (!nextPanel) return;
+        stopInterstitial();
+        panels.forEach((panel, number) => {
+          const active = number === stepNumber;
+          panel.toggleAttribute('hidden', !active);
+          panel.toggleAttribute('inert', !active);
+        });
+        currentStep = stepNumber;
+        window.__paidFunnelCurrentStep = stepNumber;
+        updateProgress(stepNumber);
+        const path = '/lp/' + preload.slug + '/step/' + stepNumber;
+        if (pushHistory) history.pushState({ ...(history.state || {}), paidFunnelStep: stepNumber }, '', path);
+        document.title = (nextPanel.dataset.stepTitle || 'Estimate') + ' | ' + document.title.split(' | ').slice(1).join(' | ');
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        if (fireTracking) fireMeta(stepNumber);
+        window.__paidFunnelPush?.('funnel_step_view', { step_number: stepNumber, step_key: nextPanel.dataset.stepKey });
+        if (preload.interstitialStep && stepNumber === preload.interstitialStep) startInterstitial();
+      }
+
+      history.replaceState({ ...(history.state || {}), paidFunnelStep: 1 }, '', location.href);
+
+      document.addEventListener('submit', (event) => {
+        const form = event.target.closest('form[data-funnel-form]');
+        if (!form) return;
+        const panel = form.closest('[data-step-panel]');
+        const stepNumber = Number(panel?.dataset.stepNumber);
+        if (!Number.isInteger(stepNumber)) return;
+        event.preventDefault();
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        const data = new FormData(form);
+        const submitter = event.submitter;
+        if (submitter?.name && submitter.value) data.append(submitter.name, submitter.value);
+        data.set('tabId', window.__paidFunnelTabId || '');
+        const error = panel.querySelector('[data-client-error]');
+        error?.setAttribute('hidden', '');
+
+        if (stepNumber === 1) {
+          const zip = String(data.get('zip') || '');
+          preload.advancedMatching.zp = zip;
+          window.fbq?.('init', preload.pixelId, preload.advancedMatching);
+        }
+
+        if (stepNumber < preload.contactStep) showStep(stepNumber + 1, true, true);
+        if (stepNumber === preload.contactStep && preload.bookStep) showStep(preload.bookStep, true, true);
+
+        const request = () => fetch(form.action, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'x-funnel-navigation': 'preloaded' },
+          body: data,
+        }).then(async (response) => {
+          const result = await response.json().catch(() => ({ ok: false, error: 'temporary' }));
+          if (!response.ok || !result.ok) throw { result, stepNumber };
+          if (result.nextPath && !result.nextPath.includes('/step/')) location.assign(result.nextPath);
+          return result;
+        });
+
+        saveQueue = saveQueue.then(request).catch((failure) => {
+          const failedStep = failure?.stepNumber || stepNumber;
+          const result = failure?.result || { error: 'temporary', nextPath: '/lp/' + preload.slug + '/step/' + failedStep };
+          if (result.nextPath && !result.nextPath.includes('/step/')) {
+            location.assign(result.nextPath);
+            return;
+          }
+          showStep(failedStep, true, false);
+          showError(failedStep, result.error || 'temporary');
+          const button = panels.get(failedStep)?.querySelector("button[aria-busy='true']");
+          button?.removeAttribute('aria-busy');
+        });
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!event.target.closest('[data-preloaded-back]')) return;
+        event.preventDefault();
+        history.back();
+      });
+
+      window.addEventListener('popstate', (event) => {
+        const stepNumber = Number(event.state?.paidFunnelStep);
+        if (Number.isInteger(stepNumber) && panels.has(stepNumber)) showStep(stepNumber, false, false);
+      });
+
+      window.addEventListener('pagehide', stopInterstitial, { once: true });
+    };
+
+    if (window.__paidFunnelRuntimeReady) {
+      window.__paidFunnelRuntimeReady.then((runtime) => window.setTimeout(() => start(runtime), 0));
+    } else {
+      window.addEventListener('paid-funnel-runtime-ready', (event) => {
+        window.setTimeout(() => start(event.detail), 0);
+      }, { once: true });
+    }
+  })();
+`}></script>

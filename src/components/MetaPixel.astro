@@ -1,0 +1,85 @@
+---
+// Precision Conversion Ledger: one Pixel init per route, progressive advanced matching, pre-minted IDs, and no duplicate PageView after re-init.
+import type { BrowserEventEnvelope } from "../types/funnel";
+
+interface Props {
+  pixelId: string;
+  advancedMatching: Record<string, string>;
+  pageView: BrowserEventEnvelope;
+  viewContent?: BrowserEventEnvelope;
+  conversion?: BrowserEventEnvelope;
+  viewContentDelayMs: number;
+}
+
+const trackingConfig = {
+  pixelId: Astro.props.pixelId,
+  advancedMatching: Astro.props.advancedMatching,
+  pageView: Astro.props.pageView,
+  viewContent: Astro.props.viewContent,
+  conversion: Astro.props.conversion,
+  viewContentDelayMs: Astro.props.viewContentDelayMs,
+};
+const serialized = JSON.stringify(trackingConfig).replace(/</g, "\\u003c");
+---
+
+<script is:inline set:html={`
+  (() => {
+    const tracking = ${serialized};
+    const runtimeReady = window.__paidFunnelRuntimeReady || Promise.resolve({ blocked: false });
+    runtimeReady.then((runtime) => {
+      if (runtime.blocked) return;
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}
+    (window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+
+    const readCookie = (name) => document.cookie
+      .split('; ')
+      .find((row) => row.startsWith(name + '='))
+      ?.split('=')
+      .slice(1)
+      .join('=');
+
+    const notifyServer = (eventId, triggerServer) => {
+      void fetch('/api/meta/event', {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          triggerServer,
+          fbp: readCookie('_fbp') || undefined,
+        }),
+      });
+    };
+
+    fbq('init', tracking.pixelId, tracking.advancedMatching);
+    fbq('track', tracking.pageView.eventName, tracking.pageView.customData, {
+      eventID: tracking.pageView.eventId,
+    });
+    notifyServer(tracking.pageView.eventId, false);
+
+    if (tracking.conversion) {
+      fbq('track', tracking.conversion.eventName, tracking.conversion.customData, {
+        eventID: tracking.conversion.eventId,
+      });
+      notifyServer(tracking.conversion.eventId, false);
+    }
+
+    if (tracking.viewContent) {
+      window.__paidFunnelCancelViewContent?.();
+      const viewContentTimer = window.setTimeout(() => {
+        fbq('track', tracking.viewContent.eventName, tracking.viewContent.customData, {
+          eventID: tracking.viewContent.eventId,
+        });
+        notifyServer(tracking.viewContent.eventId, true);
+      }, tracking.viewContentDelayMs);
+      window.__paidFunnelCancelViewContent = () => window.clearTimeout(viewContentTimer);
+
+      window.addEventListener('pagehide', () => window.clearTimeout(viewContentTimer), { once: true });
+    }
+    });
+  })();
+`}></script>

@@ -1,0 +1,111 @@
+---
+// Precision Conversion Ledger: a short factual process interstitial that confirms qualification work without fabricated social proof.
+interface Props {
+  nextPath: string;
+  delayMs?: number;
+  managed?: boolean;
+}
+
+const { nextPath, delayMs = 3600, managed = false } = Astro.props;
+const messages = [
+  "Checking service availability in your area",
+  "Matching your answers with your local store",
+  "Preparing your personalized estimate request",
+];
+const serialized = JSON.stringify({ nextPath, delayMs, messages }).replace(/</g, "\\u003c");
+---
+
+<header class="question-header interstitial-header">
+  <div class="validation-spinner" aria-hidden="true"></div>
+  <h1 class="question-title">Validating Results…</h1>
+  <p class="question-support">Verifying your profile to make sure you’re a fit...</p>
+</header>
+
+<div class="response-area interstitial-status" role="status" aria-live="polite">
+  <p class="interstitial-status__copy" data-validation-copy>{messages[0]}</p>
+  <div class="interstitial-meter" aria-hidden="true"><span></span></div>
+</div>
+
+<div class="review-marquee" aria-label="Customer reviews">
+  <div class="review-track" data-review-track>
+    <figure class="review-card">
+      <div class="review-card__stars" style="--rating: 5" aria-label="5 out of 5 stars"></div>
+      <blockquote class="review-card__quote">Walked in knowing what was actually in stock. No runaround.</blockquote>
+      <figcaption class="review-card__who">
+        <span class="review-card__avatar" aria-hidden="true"></span>
+        <span class="review-card__name">Marcus T.</span>
+      </figcaption>
+    </figure>
+    <figure class="review-card">
+      <div class="review-card__stars" style="--rating: 5" aria-label="5 out of 5 stars"></div>
+      <blockquote class="review-card__quote">ZIP check took a minute. Then we saw the models that fit the yard.</blockquote>
+      <figcaption class="review-card__who">
+        <span class="review-card__avatar" aria-hidden="true"></span>
+        <span class="review-card__name">Elena R.</span>
+      </figcaption>
+    </figure>
+    <figure class="review-card">
+      <div class="review-card__stars" style="--rating: 5" aria-label="5 out of 5 stars"></div>
+      <blockquote class="review-card__quote">Straight answers on delivery and setup. That’s all we needed.</blockquote>
+      <figcaption class="review-card__who">
+        <span class="review-card__avatar" aria-hidden="true"></span>
+        <span class="review-card__name">Chris P.</span>
+      </figcaption>
+    </figure>
+  </div>
+</div>
+
+<noscript>
+  <a class="primary-button" href={nextPath}>Continue to the Last Step</a>
+</noscript>
+
+<script is:inline>
+  (() => {
+    const track = document.querySelector("[data-review-track]");
+    if (track && !matchMedia("(prefers-reduced-motion: reduce)").matches && !track.dataset.cloned) {
+      track.dataset.cloned = "1";
+      Array.prototype.slice.call(track.children).forEach((card) => {
+        const clone = card.cloneNode(true);
+        clone.setAttribute("aria-hidden", "true");
+        track.appendChild(clone);
+      });
+    }
+  })();
+</script>
+
+{
+  !managed && (
+    <script is:inline set:html={`
+  (() => {
+    const interstitial = ${serialized};
+    const start = (runtime) => {
+      if (runtime.blocked) return;
+      window.__paidFunnelPush?.('validation_interstitial_visible');
+      const copy = document.querySelector('[data-validation-copy]');
+      let messageIndex = 0;
+      const rotation = window.setInterval(() => {
+        messageIndex = Math.min(messageIndex + 1, interstitial.messages.length - 1);
+        if (copy) copy.textContent = interstitial.messages[messageIndex];
+        if (messageIndex === interstitial.messages.length - 1) window.clearInterval(rotation);
+      }, 1050);
+
+      const advance = window.setTimeout(() => {
+        window.clearInterval(rotation);
+        location.replace(interstitial.nextPath);
+      }, interstitial.delayMs);
+
+      window.addEventListener('pagehide', () => {
+        window.clearInterval(rotation);
+        window.clearTimeout(advance);
+      }, { once: true });
+    };
+
+    if (window.__paidFunnelRuntimeReady) {
+      window.__paidFunnelRuntimeReady.then(start);
+    } else {
+      window.addEventListener('paid-funnel-runtime-ready', (event) => start(event.detail), { once: true });
+    }
+  })();
+`} />
+  )
+}

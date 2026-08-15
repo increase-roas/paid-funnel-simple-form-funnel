@@ -1,0 +1,85 @@
+---
+// Precision Conversion Ledger: thumb-friendly contact capture, stored consent text, and an invisible server-read honeypot.
+import { funnelConfig } from "../lib/config";
+import type { ContactData } from "../types/funnel";
+
+interface Props {
+  action: string;
+  savedContact?: ContactData;
+  consentAccepted?: boolean;
+}
+
+const { action, savedContact, consentAccepted = false } = Astro.props;
+---
+
+<form method="post" action={action} data-funnel-form class="response-area" novalidate>
+  <input type="hidden" name="tabId" value="" data-tab-id />
+
+  <div class="contact-grid contact-grid--names">
+    <label class="field-label">
+      First name
+      <input
+        class="text-input"
+        type="text"
+        name="firstName"
+        value={savedContact?.firstName ?? ""}
+        autocomplete="given-name"
+        maxlength="80"
+        required
+      />
+    </label>
+    <label class="field-label">
+      Last name
+      <input
+        class="text-input"
+        type="text"
+        name="lastName"
+        value={savedContact?.lastName ?? ""}
+        autocomplete="family-name"
+        maxlength="80"
+        required
+      />
+    </label>
+  </div>
+
+  <label class="field-label">
+    Mobile phone
+    <input
+      class="text-input"
+      type="tel"
+      name="phone"
+      value={savedContact?.phone ?? ""}
+      autocomplete="tel"
+      inputmode="tel"
+      maxlength="24"
+      required
+    />
+  </label>
+
+  <label class="field-label">
+    Email address
+    <input
+      class="text-input"
+      type="email"
+      name="email"
+      value={savedContact?.email ?? ""}
+      autocomplete="email"
+      inputmode="email"
+      maxlength="254"
+      required={funnelConfig.contact.emailRequired}
+    />
+  </label>
+
+  <label class="honeypot-field" aria-hidden="true">
+    Company website
+    <input type="text" name="website" tabindex="-1" autocomplete="off" />
+  </label>
+
+  <label class="consent-row">
+    <input type="checkbox" name="consent" value="accepted" checked={consentAccepted} required />
+    <span>{funnelConfig.contact.consent.text}</span>
+  </label>
+
+  <button class="primary-button" type="submit">{funnelConfig.contact.submitLabel}</button>
+  <p class="privacy-note">Information is used only to respond to this request and deliver the requested options.</p>
+</form>

@@ -1,0 +1,36 @@
+---
+// Precision Conversion Ledger: concise confirmation of submitted preferences with no promotional detours.
+import { funnelConfig } from "../lib/config";
+import type { FunnelSession } from "../types/funnel";
+
+interface Props {
+  session: FunnelSession;
+}
+
+const { session } = Astro.props;
+const summaryItems = funnelConfig.surveyQuestions
+  .map((question) => {
+    const rawAnswer = session.answers[question.id];
+    const values = Array.isArray(rawAnswer) ? rawAnswer : rawAnswer ? [rawAnswer] : [];
+    const labels = values.map(
+      (value) => question.options?.find((option) => option.value === value)?.label ?? value,
+    );
+    return labels.length ? { label: question.text, value: labels.join(", ") } : null;
+  })
+  .filter((item): item is { label: string; value: string } => Boolean(item));
+---
+
+<dl class="answer-summary">
+  <div class="answer-summary__item">
+    <dt>Service ZIP</dt>
+    <dd>{session.zip}</dd>
+  </div>
+  {
+    summaryItems.map((item) => (
+      <div class="answer-summary__item">
+        <dt>{item.label}</dt>
+        <dd>{item.value}</dd>
+      </div>
+    ))
+  }
+</dl>

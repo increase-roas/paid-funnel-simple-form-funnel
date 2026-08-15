@@ -1,0 +1,51 @@
+---
+import { funnelConfig, INVENTORY_SLOT_COUNT } from "../lib/config";
+
+interface Props {
+  showHeader?: boolean;
+}
+
+const { showHeader = true } = Astro.props;
+const slots = funnelConfig.inventory.products.slice(0, INVENTORY_SLOT_COUNT);
+---
+
+<div class="inventory-shell">
+  {
+    showHeader && (
+      <header class="inventory-header">
+        <h1 class="inventory-title">{funnelConfig.inventory.headline}</h1>
+        <p class="inventory-subtitle">{funnelConfig.inventory.subheadline}</p>
+      </header>
+    )
+  }
+
+  <div class="inventory-grid inventory-grid--five">
+    {
+      slots.map((product) =>
+        product.active ? (
+          <article class="inventory-card">
+            <img
+              class="inventory-card__image"
+              src={product.imageUrl}
+              alt={product.name}
+              width="640"
+              height="480"
+              loading="lazy"
+              decoding="async"
+            />
+            <div class="inventory-card__body">
+              <h2 class="inventory-card__name">{product.name}</h2>
+              {product.description && <p class="inventory-card__copy">{product.description}</p>}
+              {product.priceLabel && <p class="inventory-card__price">{product.priceLabel}</p>}
+              <a class="inventory-card__cta primary-button" href={product.ctaUrl}>
+                {product.ctaLabel}
+              </a>
+            </div>
+          </article>
+        ) : (
+          <div class="inventory-slot inventory-slot--empty" aria-hidden="true"></div>
+        ),
+      )
+    }
+  </div>
+</div>

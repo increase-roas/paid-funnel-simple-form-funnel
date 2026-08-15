@@ -1,0 +1,249 @@
+---
+// Precision Conversion Ledger: shared, dependency-free browser runtime for retention, abandonment recovery, tab ownership, and Google telemetry.
+import { funnelConfig } from "../lib/config";
+
+interface Props {
+  currentStep?: number;
+  enableExitIntent?: boolean;
+}
+
+const { currentStep, enableExitIntent = false } = Astro.props;
+const runtimeConfig = {
+  slug: funnelConfig.funnel.slug,
+  currentStep,
+  enableExitIntent,
+  ga4MeasurementId: funnelConfig.ga4MeasurementId,
+};
+const serialized = JSON.stringify(runtimeConfig).replace(/</g, "\\u003c");
+---
+
+<div class="runtime-modal" data-exit-modal hidden>
+  <div class="runtime-modal__backdrop" data-return-to-project></div>
+  <section class="runtime-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="exit-modal-title" tabindex="-1">
+    <p class="system-label">Estimate in progress</p>
+    <h2 class="runtime-modal__title" id="exit-modal-title">Wait — your estimate is almost ready!</h2>
+    <p class="runtime-modal__copy">Your answers are saved. Finish the last steps so the local team can prepare the right options.</p>
+    <div class="runtime-modal__actions">
+      <button class="primary-button" type="button" data-return-to-project>Return to My Estimate</button>
+      <button class="back-link" type="button" data-cancel-project>Leave Anyway</button>
+    </div>
+  </section>
+</div>
+
+<div class="runtime-modal runtime-modal--blocking" data-multi-tab-modal hidden>
+  <section class="runtime-modal__dialog" role="alertdialog" aria-modal="true" aria-labelledby="multi-tab-title">
+    <p class="system-label">Duplicate session blocked</p>
+    <h2 class="runtime-modal__title" id="multi-tab-title">You already have this open in another tab</h2>
+    <p class="runtime-modal__copy">Continue in the original tab to keep your saved progress and conversion tracking accurate.</p>
+    <button class="primary-button" type="button" data-close-duplicate-tab>Close This Tab</button>
+  </section>
+</div>
+
+<script is:inline set:html={`
+  (() => {
+    const config = ${serialized};
+    window.dataLayer = window.dataLayer || [];
+    window.__paidFunnelCurrentStep = config.currentStep;
+    const pushEvent = (event, details = {}) => window.dataLayer.push({
+      event,
+      funnel_slug: config.slug,
+      funnel_step: window.__paidFunnelCurrentStep ?? config.currentStep,
+      ...details,
+    });
+    window.__paidFunnelPush = pushEvent;
+
+    const tabIdKey = 'paid_funnel_tab_id';
+    const openedAtKey = 'paid_funnel_tab_opened_at';
+    let tabId = sessionStorage.getItem(tabIdKey);
+    if (!tabId) {
+      tabId = crypto.randomUUID();
+      sessionStorage.setItem(tabIdKey, tabId);
+    }
+    let openedAt = Number(sessionStorage.getItem(openedAtKey));
+    if (!Number.isFinite(openedAt) || openedAt <= 0) {
+      openedAt = Date.now();
+      sessionStorage.setItem(openedAtKey, String(openedAt));
+    }
+
+    window.__paidFunnelTabId = tabId;
+    document.querySelectorAll('[data-tab-id]').forEach((input) => {
+      input.value = tabId;
+    });
+
+    const zipInput = document.querySelector('.hero-entry input[name="zip"]');
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelector('[data-repeat-cta]')?.addEventListener('click', () => {
+      if (!(zipInput instanceof HTMLInputElement)) return;
+      zipInput.scrollIntoView(reduceMotion ? { block: 'center' } : { behavior: 'smooth', block: 'center' });
+      zipInput.focus({ preventScroll: true });
+    });
+
+    let blocked = false;
+    let settled = false;
+    let resolveReady;
+    const ready = new Promise((resolve) => { resolveReady = resolve; });
+    window.__paidFunnelRuntimeReady = ready;
+    const settleRuntime = (state) => {
+      if (settled) return;
+      settled = true;
+      resolveReady(state);
+      window.dispatchEvent(new CustomEvent('paid-funnel-runtime-ready', { detail: state }));
+    };
+
+    const duplicateModal = document.querySelector('[data-multi-tab-modal]');
+    const blockDuplicateTab = () => {
+      if (blocked) return;
+      blocked = true;
+      document.documentElement.dataset.funnelTabState = 'blocked';
+      document.querySelectorAll('form, button, input, textarea, a').forEach((element) => {
+        if (element.closest('[data-multi-tab-modal]')) return;
+        element.setAttribute('inert', '');
+      });
+      duplicateModal?.removeAttribute('hidden');
+      settleRuntime({ blocked: true, tabId });
+    };
+
+    let channel;
+    if ('BroadcastChannel' in window) {
+      channel = new BroadcastChannel('paid_funnel:' + config.slug);
+      channel.addEventListener('message', (message) => {
+        const data = message.data || {};
+        if (!data.tabId || data.tabId === tabId) return;
+
+        if (data.type === 'hello') {
+          const thisTabWins = openedAt < data.openedAt || (openedAt === data.openedAt && tabId < data.tabId);
+          if (thisTabWins) {
+            channel.postMessage({ type: 'occupied', target: data.tabId, tabId, openedAt });
+          } else {
+            blockDuplicateTab();
+          }
+        }
+
+        if (data.type === 'occupied' && data.target === tabId) blockDuplicateTab();
+      });
+      channel.postMessage({ type: 'hello', tabId, openedAt });
+      window.addEventListener('pagehide', () => channel?.close(), { once: true });
+    }
+
+    window.setTimeout(() => {
+      settleRuntime({ blocked: false, tabId });
+    }, 140);
+
+    document.querySelector('[data-close-duplicate-tab]')?.addEventListener('click', () => {
+      window.close();
+    });
+
+    ready.then((runtime) => {
+      if (runtime.blocked) return;
+
+      if (config.ga4MeasurementId) {
+        window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', config.ga4MeasurementId, { send_page_view: false });
+        const googleScript = document.createElement('script');
+        googleScript.async = true;
+        googleScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(config.ga4MeasurementId);
+        document.head.appendChild(googleScript);
+      }
+
+      document.querySelectorAll('form[data-funnel-form]').forEach((form) => {
+        form.addEventListener('submit', () => {
+          const button = form.querySelector("button[type='submit']");
+          if (button) button.setAttribute('aria-busy', 'true');
+        });
+      });
+
+      const retentionThresholds = [30, 60, 120, 180, 300, 600, 1800];
+      const retainedKey = 'paid_funnel_visible_ms';
+      const firedKey = 'paid_funnel_retention_fired';
+      let activeMs = Number(sessionStorage.getItem(retainedKey) || 0);
+      let fired = new Set(JSON.parse(sessionStorage.getItem(firedKey) || '[]'));
+      let lastTick = performance.now();
+
+      const retentionTimer = window.setInterval(() => {
+        const now = performance.now();
+        if (document.visibilityState === 'visible') activeMs += now - lastTick;
+        lastTick = now;
+        sessionStorage.setItem(retainedKey, String(Math.floor(activeMs)));
+
+        for (const seconds of retentionThresholds) {
+          if (activeMs >= seconds * 1000 && !fired.has(seconds)) {
+            fired.add(seconds);
+            sessionStorage.setItem(firedKey, JSON.stringify([...fired]));
+            pushEvent('retention_visible', { visible_seconds: seconds });
+          }
+        }
+      }, 1000);
+
+      document.addEventListener('visibilitychange', () => {
+        lastTick = performance.now();
+      });
+      window.addEventListener('pagehide', () => {
+        window.clearInterval(retentionTimer);
+        sessionStorage.setItem(retainedKey, String(Math.floor(activeMs)));
+      }, { once: true });
+
+      if (!config.enableExitIntent) return;
+      const exitModal = document.querySelector('[data-exit-modal]');
+      const exitDialog = exitModal?.querySelector('.runtime-modal__dialog');
+      const shownKey = 'paid_funnel_exit_shown:' + location.pathname;
+      let exitDisabled = false;
+      let intentType = 'desktop_exit';
+
+      const showExitModal = (source) => {
+        if (exitDisabled || sessionStorage.getItem(shownKey) === '1') return;
+        intentType = source;
+        sessionStorage.setItem(shownKey, '1');
+        pushEvent('wizard_leave_attempt', { intent_type: source });
+        exitModal?.removeAttribute('hidden');
+        document.body.classList.add('runtime-modal-open');
+        exitDialog?.focus();
+      };
+
+      const returnToProject = () => {
+        pushEvent('_return_to_project', { intent_type: intentType });
+        exitModal?.setAttribute('hidden', '');
+        document.body.classList.remove('runtime-modal-open');
+      };
+
+      document.querySelectorAll('[data-return-to-project]').forEach((element) => {
+        element.addEventListener('click', returnToProject);
+      });
+
+      document.querySelector('[data-cancel-project]')?.addEventListener('click', () => {
+        exitDisabled = true;
+        pushEvent('_cancel_project', { intent_type: intentType });
+        const initialLength = Number(sessionStorage.getItem('paid_funnel_initial_history_length') || history.length);
+        const backSteps = Math.max(2, history.length - initialLength + 1);
+        history.go(-backSteps);
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !exitModal?.hasAttribute('hidden')) returnToProject();
+      });
+
+      const coarsePointer = matchMedia('(pointer: coarse)').matches;
+      if (!coarsePointer) {
+        document.addEventListener('mouseout', (event) => {
+          if (!event.relatedTarget && event.clientY <= 0) showExitModal('desktop_exit');
+        });
+      } else {
+        if (!sessionStorage.getItem('paid_funnel_initial_history_length')) {
+          sessionStorage.setItem('paid_funnel_initial_history_length', String(history.length));
+        }
+        history.replaceState({ ...(history.state || {}), paidFunnelBase: true }, '', location.href);
+        history.pushState({ paidFunnelGuard: true }, '', location.href);
+        window.addEventListener('popstate', () => {
+          if (exitDisabled) return;
+          if (sessionStorage.getItem(shownKey) === '1' && exitModal?.hasAttribute('hidden')) {
+            exitDisabled = true;
+            history.back();
+            return;
+          }
+          showExitModal('mobile_back');
+          history.pushState({ paidFunnelGuard: true }, '', location.href);
+        });
+      }
+    });
+  })();
+`}></script>

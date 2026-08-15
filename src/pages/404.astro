@@ -1,0 +1,18 @@
+---
+// Precision Conversion Ledger: minimal noindex error state with no site navigation or promotional content.
+import FunnelLayout from "../layouts/FunnelLayout.astro";
+
+export const prerender = true;
+Astro.response.status = 404;
+---
+
+<FunnelLayout title="Page not found" description="The requested funnel page is not available.">
+  <section class="decision-panel">
+    <header class="question-header">
+      <p class="system-label">404</p>
+      <h1 class="question-title">This page is not available.</h1>
+      <p class="question-support">Check the link from the ad and try again.</p>
+    </header>
+  </section>
+</FunnelLayout>
+

@@ -1,0 +1,139 @@
+---
+// Precision Conversion Ledger: no navigation leakage, visible ad disclosure, one decision rail, and minimal critical-path JavaScript.
+import MetaPixel from "../components/MetaPixel.astro";
+import FunnelClientRuntime from "../components/FunnelClientRuntime.astro";
+import GoogleConversionEvents from "../components/GoogleConversionEvents.astro";
+import ProgressBar from "../components/ProgressBar.astro";
+import { funnelConfig } from "../lib/config";
+import type { BrowserEventEnvelope } from "../types/funnel";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  currentStep?: number;
+  totalSteps?: number;
+  hasSavedData?: boolean;
+  metaTracking?: {
+    advancedMatching: Record<string, string>;
+    pageView: BrowserEventEnvelope;
+    viewContent?: BrowserEventEnvelope;
+    conversion?: BrowserEventEnvelope;
+  };
+  googleConversion?: {
+    leadId: string;
+    value: number;
+    currency: string;
+    userData: {
+      country: string;
+      zip: string;
+      first_name: string;
+      last_name: string;
+      phone: string;
+      email: string;
+    };
+  };
+}
+
+const {
+  title,
+  description,
+  currentStep,
+  totalSteps,
+  hasSavedData = false,
+  metaTracking,
+  googleConversion,
+} = Astro.props;
+const showProgress = typeof currentStep === "number" && typeof totalSteps === "number";
+const currentYear = new Date().getUTCFullYear();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#1da1f2" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://connect.facebook.net" crossorigin />
+    <link rel="preconnect" href="https://www.facebook.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100;200;300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title} | {funnelConfig.client.name} | {currentYear}</title>
+    <slot name="head" />
+  </head>
+  <body>
+    <div class="funnel-shell">
+      <div class="system-bar">
+        <div class="system-bar__inner">
+          <p class="disclosure">{funnelConfig.funnel.advertorialLabel}</p>
+          <div class="brand-lockup" aria-label={funnelConfig.client.name}>
+            <img
+              src={funnelConfig.client.logoUrl}
+              alt={funnelConfig.client.logoAlt}
+              width="30"
+              height="30"
+              decoding="async"
+            />
+            <span class="brand-lockup__name">{funnelConfig.client.name}</span>
+          </div>
+        </div>
+      </div>
+
+      <main class="funnel-main">
+        {
+          showProgress && (
+            <ProgressBar
+              currentStep={currentStep}
+              totalSteps={totalSteps}
+              hasSavedData={hasSavedData}
+              style={funnelConfig.progressStyle}
+            />
+          )
+        }
+        <slot />
+      </main>
+
+      <footer class="site-footer">
+        <p class="site-footer__brand">{funnelConfig.client.name}</p>
+        <p class="site-footer__meta">{funnelConfig.funnel.qualifyingLine}</p>
+      </footer>
+    </div>
+
+    <FunnelClientRuntime currentStep={currentStep} enableExitIntent={showProgress} />
+    {
+      metaTracking && (
+        <MetaPixel
+          pixelId={funnelConfig.meta.pixelId}
+          advancedMatching={metaTracking.advancedMatching}
+          pageView={metaTracking.pageView}
+          viewContent={metaTracking.viewContent}
+          conversion={metaTracking.conversion}
+          viewContentDelayMs={funnelConfig.meta.viewContentDelayMs}
+        />
+      )
+    }
+    {
+      googleConversion && (
+        <GoogleConversionEvents
+          measurementId={funnelConfig.ga4MeasurementId}
+          enhancedConversions={funnelConfig.googleEnhancedConversions}
+          leadId={googleConversion.leadId}
+          value={googleConversion.value}
+          currency={googleConversion.currency}
+          userData={googleConversion.userData}
+        />
+      )
+    }
+
+    <noscript>
+      <p class="noscript-note">JavaScript is disabled. The form still works, but browser-side ad measurement will be unavailable.</p>
+    </noscript>
+
+  </body>
+</html>

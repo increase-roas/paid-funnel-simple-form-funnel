@@ -1,0 +1,7 @@
+---
+// Precision Conversion Ledger: the template root redirects into the configured paid funnel rather than exposing a full website.
+import { getStepPath } from "../lib/config";
+
+export const prerender = false;
+return Astro.redirect(getStepPath(1), 302);
+---

@@ -1,0 +1,90 @@
+---
+// Precision Conversion Ledger: one-tap single choices, explicit multi-choice continuation, and accessible native controls.
+import TrustBadges from "./TrustBadges.astro";
+import type { AnswerValue, ConfiguredQuestion } from "../types/funnel";
+
+interface Props {
+  question: ConfiguredQuestion;
+  action: string;
+  savedAnswer?: AnswerValue;
+  ctaLabel: string;
+}
+
+const { question, action, savedAnswer, ctaLabel } = Astro.props;
+const savedValues = Array.isArray(savedAnswer) ? savedAnswer : savedAnswer ? [savedAnswer] : [];
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const optionIcons: Record<string, string> = {
+  "hot-tub": "🛁",
+  "swim-spa": "🏊",
+  "not-sure": "🤔",
+  "within-30-days": "🚀",
+  "one-to-three-months": "📅",
+  "three-to-six-months": "📆",
+  researching: "🔍",
+  "two-to-three": "👥",
+  "four-to-five": "👨‍👩‍👧",
+  "six-plus": "🎉",
+  hydrotherapy: "💆",
+  "low-maintenance": "✨",
+  "energy-efficiency": "⚡",
+  entertainment: "🎵",
+};
+
+function optionMark(value: string, index: number): string {
+  return optionIcons[value] ?? alphabet[index] ?? "";
+}
+---
+
+<form method="post" action={action} data-funnel-form class="response-area">
+  <input type="hidden" name="tabId" value="" data-tab-id />
+
+  {
+    question.type === "single-choice" && (
+      <fieldset class="choice-list">
+        <legend class="visually-hidden">{question.text}</legend>
+        {question.options?.map((option, index) => (
+          <button class="choice-button" type="submit" name="answer" value={option.value}>
+            <span class="choice-index" aria-hidden="true">{optionMark(option.value, index)}</span>
+            <span class="choice-label">{option.label}</span>
+          </button>
+        ))}
+      </fieldset>
+    )
+  }
+
+  {
+    question.type === "multi-choice" && (
+      <>
+        <fieldset class="choice-list">
+          <legend class="visually-hidden">{question.text}</legend>
+          {question.options?.map((option, index) => (
+            <label class="choice-option">
+              <input
+                type="checkbox"
+                name="answer"
+                value={option.value}
+                checked={savedValues.includes(option.value)}
+              />
+              <span class="choice-index" aria-hidden="true">{optionMark(option.value, index)}</span>
+              <span class="choice-label">{option.label}</span>
+            </label>
+          ))}
+        </fieldset>
+        <button class="primary-button" type="submit">{ctaLabel}</button>
+      </>
+    )
+  }
+
+  {
+    question.type === "text" && (
+      <>
+        <label class="field-label">
+          <span class="visually-hidden">{question.text}</span>
+          <textarea class="text-area" name="answer" maxlength="500" required>{savedValues[0] ?? ""}</textarea>
+        </label>
+        <button class="primary-button" type="submit">{ctaLabel}</button>
+      </>
+    )
+  }
+</form>
+<TrustBadges />

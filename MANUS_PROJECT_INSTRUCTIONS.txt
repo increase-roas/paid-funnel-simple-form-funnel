@@ -1,0 +1,16 @@
+Read MANUS.md in this project before doing anything.
+
+You are configuring paid-funnel-advertorial — an Astro 7 + Cloudflare Workers paid funnel. NOT a website. NOT React.
+
+TASK: Quick client funnel setup (config only unless hero UI already exists in repo).
+
+RULES:
+1. Edit funnel.config.ts and/or src/lib/funnelDefaults.ts only for a quick client.
+2. Never rebuild as React or deploy a fake demo funnel to Manus hosting.
+3. Preview = npm install && npm run dev, then open http://localhost:3000/lp/{slug}/step/1
+4. If terminal blocked, deliver the config diff + local URL. Do NOT substitute a React app.
+5. Run npm run gate && npm test && npm run check before marking done.
+6. Shape A = ZIP→contact (fast). Shape B = survey funnel (default). Shape C = B + calendarUrl.
+7. No production Cloudflare deploy. No sun-pool-spa. No secrets in output.
+
+DELIVERABLE: Updated config, shape choice, passing gate/tests, preview path /lp/{slug}/step/1.

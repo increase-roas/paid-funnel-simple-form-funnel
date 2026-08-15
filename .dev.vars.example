@@ -1,0 +1,17 @@
+# Copy to .dev.vars for local development.
+# See docs/WIRING.md for full checklist.
+
+# Meta CAPI (required for server conversions in prod)
+META_CAPI_ACCESS_TOKEN=""
+
+# Dev/smoke ONLY — remove before production deploy
+META_TEST_EVENT_CODE=""
+
+# GHL inbound webhook (workflow trigger URL)
+GHL_WEBHOOK_URL=""
+
+# Bearer secret for POST /api/funnel/{slug}/conversion (maps to STAGE_WEBHOOK_SECRET in Lead Vault docs)
+CRM_CALLBACK_SECRET="change-me-locally"
+
+# Slack-compatible alert on GHL delivery failure (maps to ALERT_WEBHOOK_URL)
+SUBMISSION_ALERT_WEBHOOK_URL=""

@@ -1,0 +1,31 @@
+---
+// Precision Conversion Ledger: compact, segmented progress with explicit numeric status and saved-state confidence.
+interface Props {
+  currentStep: number;
+  totalSteps: number;
+  hasSavedData?: boolean;
+  style?: "counter" | "bar" | "both";
+}
+
+const { currentStep, totalSteps, hasSavedData = false, style = "both" } = Astro.props;
+const completed = Math.max(0, currentStep - 1);
+const segments = Array.from({ length: totalSteps }, (_, index) => {
+  const segment = index + 1;
+  const state = segment <= completed ? "complete" : segment === currentStep ? "current" : "pending";
+  return { segment, state };
+});
+---
+
+<div class="progress-wrap" data-progress-style={style} aria-label={`Step ${currentStep} of ${totalSteps}`}>
+  <div class="progress-meta">
+    {style !== "bar" && <p class="progress-copy">Step {currentStep} of {totalSteps}</p>}
+    <p class="saved-indicator" aria-live="polite">{hasSavedData ? "Progress saved" : "Secure session"}</p>
+  </div>
+  {
+    style !== "counter" && (
+      <div class="progress-track" style={`--step-count: ${totalSteps}`} aria-hidden="true">
+        {segments.map(({ segment, state }) => <span class="progress-segment" data-state={state} data-segment={segment}></span>)}
+      </div>
+    )
+  }
+</div>
