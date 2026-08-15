@@ -53,6 +53,7 @@ function collectUserFacingCopy(): string[] {
 
 const totalSteps = getTotalSteps();
 const shape = funnelConfig.funnel.shape;
+requireCondition(shape === "A", "This template is Shape A only (ZIP → contact → thank-you inventory).");
 const expectedTotal =
   shape === "A"
     ? 2
@@ -93,6 +94,33 @@ const tracking = read("src/lib/tracking.ts");
 const middleware = read("src/middleware.ts");
 const robots = read("public/robots.txt");
 const wrangler = read("wrangler.toml");
+const manifestRaw = read("launchpad.template.json");
+let manifest: {
+  schemaVersion?: unknown;
+  contractVersion?: unknown;
+  templateKey?: unknown;
+  name?: unknown;
+  repo?: unknown;
+  defaultBranch?: unknown;
+  type?: unknown;
+  shape?: unknown;
+  active?: unknown;
+} = {};
+try {
+  manifest = JSON.parse(manifestRaw) as typeof manifest;
+} catch {
+  failures.push("launchpad.template.json is not valid JSON.");
+}
+requireCondition(manifest.schemaVersion === 1, "launchpad.template.json schemaVersion must be 1.");
+requireCondition(manifest.contractVersion === 1, "launchpad.template.json contractVersion must be 1.");
+requireCondition(manifest.templateKey === "simple-form", "launchpad.template.json templateKey must be simple-form.");
+requireCondition(manifest.name === "Simple Form Funnel", "launchpad.template.json name must match this template.");
+requireCondition(manifest.repo === "increase-roas/paid-funnel-simple-form-funnel", "launchpad.template.json repo must match this repository.");
+requireCondition(manifest.defaultBranch === "main", "launchpad.template.json defaultBranch must be main.");
+requireCondition(manifest.type === "paid-funnel", "launchpad.template.json type must be paid-funnel.");
+requireCondition(manifest.shape === "A", "launchpad.template.json shape must be A.");
+requireCondition(manifest.active === true, "launchpad.template.json must be active.");
+requireCondition(!/secret|token|password/i.test(manifestRaw), "launchpad.template.json must not contain secrets.");
 const migration = read("migrations/0001_initial.sql");
 const validation = read("src/lib/validation.ts");
 const worker = read("src/worker.ts");

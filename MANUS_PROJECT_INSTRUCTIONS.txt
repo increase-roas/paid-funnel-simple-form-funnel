@@ -1,8 +1,8 @@
 Read MANUS.md in this project before doing anything.
 
-You are configuring paid-funnel-advertorial — an Astro 7 + Cloudflare Workers paid funnel. NOT a website. NOT React.
+You are configuring paid-funnel-simple-form-funnel — an Astro 7 + Cloudflare Workers paid funnel. NOT a website. NOT React.
 
-TASK: Quick client funnel setup (config only unless hero UI already exists in repo).
+TASK: Quick client funnel setup (config only). Shape A only: ZIP → contact → thank-you with 5 inventory slots.
 
 RULES:
 1. Edit funnel.config.ts and/or src/lib/funnelDefaults.ts only for a quick client.
@@ -10,7 +10,8 @@ RULES:
 3. Preview = npm install && npm run dev, then open http://localhost:3000/lp/{slug}/step/1
 4. If terminal blocked, deliver the config diff + local URL. Do NOT substitute a React app.
 5. Run npm run gate && npm test && npm run check before marking done.
-6. Shape A = ZIP→contact (fast). Shape B = survey funnel (default). Shape C = B + calendarUrl.
-7. No production Cloudflare deploy. No sun-pool-spa. No secrets in output.
+6. Keep funnel.shape = "A". Do not turn this repo into Shape B or C.
+7. Do not rename secrets, bindings, or config keys. See README.md contract version 1.
+8. No production Cloudflare deploy. No sun-pool-spa. No secrets in output.
 
-DELIVERABLE: Updated config, shape choice, passing gate/tests, preview path /lp/{slug}/step/1.
+DELIVERABLE: Updated config, passing gate/tests, preview path /lp/{slug}/step/1.
