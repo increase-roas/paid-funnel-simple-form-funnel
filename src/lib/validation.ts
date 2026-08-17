@@ -3,7 +3,7 @@ import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js"
 import { z } from "zod";
 import { DISPOSABLE_EMAIL_DOMAINS } from "../data/disposable-email-domains";
 import type { ContactData, FunnelSession } from "../types/funnel";
-import { ALLOW_ANY_ZIP, funnelConfig } from "./config";
+import { funnelConfig, isServedZip } from "./config";
 
 const contactSchema = z.object({
   firstName: z.string().trim().min(1).max(80),
@@ -108,7 +108,7 @@ export async function validateFinalSubmission(input: {
     return { ok: false, code: "zip", reason: "A valid ZIP is required." };
   }
 
-  if (!funnelConfig.serviceAreaZipCodes.includes(input.session.zip) && !ALLOW_ANY_ZIP) {
+  if (!isServedZip(input.session.zip)) {
     return { ok: false, code: "area", reason: "ZIP is outside the configured service area." };
   }
 

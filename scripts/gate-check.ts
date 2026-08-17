@@ -130,6 +130,7 @@ const preloaded = read("src/components/PreloadedFunnel.astro");
 const googleConversion = read("src/components/GoogleConversionEvents.astro");
 const progress = read("src/components/ProgressBar.astro");
 const configSchema = read("src/lib/config-schema.ts");
+const runtimeConfig = read("src/lib/config.ts");
 
 requireCondition(layout.includes("funnelConfig.funnel.advertorialLabel"), "Advertorial label is not rendered from config.");
 requireCondition(layout.includes('name="robots"') && layout.includes("noindex"), "Paid layout is missing the noindex meta tag.");
@@ -189,7 +190,11 @@ requireCondition(pixel.includes("pagehide") && pixel.includes("clearTimeout"), "
 
 requireCondition(validation.includes("normalizePhoneE164"), "E.164 phone validation is missing.");
 requireCondition(validation.includes("isDisposableEmail"), "Disposable email validation is missing.");
-requireCondition(validation.includes("serviceAreaZipCodes.includes"), "Service-area ZIP validation is missing.");
+requireCondition(runtimeConfig.includes("serviceAreaZipCodes.includes"), "Service-area ZIP validation is missing.");
+requireCondition(
+  !runtimeConfig.includes("ALLOW_ANY_ZIP") && !validation.includes("ALLOW_ANY_ZIP"),
+  "Runtime ZIP bypasses are forbidden.",
+);
 requireCondition(validation.includes("isDuplicateLead"), "Duplicate lead detection is missing.");
 requireCondition(validation.includes("honeypot"), "Server-side honeypot validation is missing.");
 

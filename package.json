@@ -9,7 +9,7 @@
     "start": "npm run dev",
     "build": "npm run gate && astro check && astro build",
     "preview": "npm run dev:db && astro build && astro preview --host 0.0.0.0",
-    "deploy": "npm run build && wrangler d1 migrations apply paid-funnel-events --remote --config wrangler.toml && wrangler deploy --config wrangler.toml",
+    "deploy": "npm run build && wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml && wrangler deploy --config wrangler.toml",
     "check": "astro check",
     "gate": "tsx scripts/gate-check.ts",
     "test": "vitest run",

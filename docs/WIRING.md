@@ -159,7 +159,7 @@ Inventory is **config-only**: five slots in `funnel.config.ts` → `inventory.pr
 | [ ] | **wrangler.toml** `FUNNEL_SESSIONS` KV id (not all-zeros in prod) | Session + attribution | Sessions fail |
 | [ ] | **wrangler.toml** `FUNNEL_DB` D1 id | Leads + event ledger | No persistence |
 | [ ] | **wrangler.toml** `CAPI_RETRY_QUEUE` + DLQ | CAPI retry | Failed CAPI not retried |
-| [ ] | `npx wrangler d1 migrations apply paid-funnel-events --remote` | Schema on prod D1 | 500 on lead save |
+| [ ] | `wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml` | Schema on prod D1 | 500 on lead save |
 
 ---
 
@@ -171,7 +171,7 @@ Inventory is **config-only**: five slots in `funnel.config.ts` → `inventory.pr
 | [ ] | `funnel.slug` | URL path `/lp/{slug}/…` |
 | [ ] | `inventory.products` (×5) | Thank-you inventory cards; `active: false` hides slot |
 | [ ] | `inventory.pageUrl` | Optional “full inventory page” link below grid |
-| [ ] | `serviceAreaZipCodes` | ZIP gate (or `ALLOW_ANY_ZIP` in dev) |
+| [ ] | `serviceAreaZipCodes` | Enforced ZIP allowlist in every runtime environment |
 | [ ] | `contact.consent` | Legal snapshot stored with lead |
 
 ---
@@ -191,8 +191,17 @@ Local: copy `.dev.vars.example` → `.dev.vars`.
 
 ## Deploy
 
+The GitHub Actions `Deploy` workflow is manual-only and requires the repository
+secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. It runs:
+
 ```bash
 npm run deploy
+```
+
+That script applies production migrations with:
+
+```bash
+wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml
 ```
 
 Post-deploy:

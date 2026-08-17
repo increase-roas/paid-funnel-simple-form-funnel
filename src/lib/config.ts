@@ -1,14 +1,7 @@
+import rawConfig from "../../funnel.config";
 import { defineFunnelConfig, type FunnelConfig } from "./config-schema";
-import { buildFunnelInput, previewShapeFromEnv } from "./funnelDefaults";
 
-const funnelShape =
-  typeof import.meta.env === "undefined"
-    ? process.env.FUNNEL_SHAPE
-    : import.meta.env.FUNNEL_SHAPE;
-
-export const funnelConfig = defineFunnelConfig(
-  buildFunnelInput(previewShapeFromEnv(funnelShape)),
-);
+export const funnelConfig = defineFunnelConfig(rawConfig);
 
 export const INVENTORY_SLOT_COUNT = 5;
 
@@ -109,12 +102,8 @@ export function getOutOfAreaPath(): string {
   return `/lp/${funnelConfig.funnel.slug}/out-of-area`;
 }
 
-/** Temporary preview: any 5-digit ZIP passes. Flip false to restore the ND list. */
-export const ALLOW_ANY_ZIP = true;
-
 export function isServedZip(zip: string | undefined): boolean {
   if (!zip || !/^\d{5}$/.test(zip)) return false;
-  if (ALLOW_ANY_ZIP) return true;
   return funnelConfig.serviceAreaZipCodes.includes(zip);
 }
 

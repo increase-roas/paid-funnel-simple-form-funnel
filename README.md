@@ -558,6 +558,9 @@ Thank You
 5 inventory slots
 ```
 
+Runtime customer configuration is loaded from the root `funnel.config.ts`.
+Every environment enforces its `serviceAreaZipCodes`; there is no ZIP bypass.
+
 Local:
 
 ```bash
@@ -580,10 +583,17 @@ Go-live wiring checklist (secrets, Meta, GHL, callbacks):
 
 **[docs/WIRING.md](./docs/WIRING.md)**
 
-Production deployment currently exists through:
+The GitHub Actions `Deploy` workflow is triggered manually only. It checks out
+the repository, uses the Node version in `.nvmrc`, runs `npm ci`, then runs:
 
 ```bash
 npm run deploy
+```
+
+The deployment script applies D1 migrations through the configured binding:
+
+```bash
+wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml
 ```
 
 Production deployment requires explicit owner approval.
