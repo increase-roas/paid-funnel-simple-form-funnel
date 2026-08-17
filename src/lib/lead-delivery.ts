@@ -33,6 +33,7 @@ export async function deliverLeadToGhl(session: FunnelSession): Promise<Delivery
         source: "Paid Ads Funnel",
         funnelSlug: funnelConfig.funnel.slug,
         clientName: funnelConfig.client.name,
+        leadUuid: session.leadId,
         leadId: session.leadId,
         sessionId: session.sessionId,
         contact: session.contact,

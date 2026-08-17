@@ -197,7 +197,7 @@ export async function buildCapiPayload(
     event_time: record.eventTime,
     event_id: record.eventId,
     event_source_url: record.eventSourceUrl,
-    action_source: "website",
+    action_source: record.capiActionSource ?? "website",
     user_data: userData,
     custom_data: record.customData,
   };

@@ -46,18 +46,20 @@ Legend: **CF secret** = `npx wrangler secret put …` · **config** = `funnel.co
 | [ ] | **config** `meta.defaultConversionValue` | Initial lead value on thank-you | Meta learns wrong economics for this client |
 | [ ] | **config** `meta.currency` | Currency on lead + lifecycle events | Wrong currency in reporting |
 
-### Value ladder (appointment → show → sale)
+### Offline conversion stage mapping
 
-This repo does **not** use env vars `META_VALUE_QUALIFIED` / `_SCHEDULE` / `_SHOWED`. Lifecycle values come from the **CRM callback** payload:
+This repo does **not** use env vars `META_VALUE_QUALIFIED` / `_SCHEDULE` / `_SHOWED`.
 
-| Stage | Meta event (server) | Value source |
-|-------|---------------------|--------------|
-| Lead | `meta.conversionEventName` | `meta.defaultConversionValue` (+ survey `intentValues` on B/C shapes) |
-| Appointment | `Schedule` | `POST /api/funnel/{slug}/conversion` body `value` |
-| Show | `AppointmentShowed` | same |
-| Sale | `Purchase` | same |
+| GHL pipeline stage | Callback `stage` | Meta event (server) | Value rule |
+|--------------------|------------------|---------------------|------------|
+| Hot Pursuit | `qualified` | `QualifiedLead` | Explicit finite nonnegative callback value, otherwise `75` |
+| Appointment Set | `appointment` | `Schedule` | Explicit finite nonnegative callback value, otherwise `300` |
+| Showed | `show` | `Showed` | Explicit finite nonnegative callback value, otherwise `600` |
+| Sold | `sale` | `Purchase` | Explicit positive callback value required |
 
-- [ ] GHL (or Make) sends realistic `value` per stage in callback JSON — not generic 75/300/600 from another client
+The initial website Lead still uses `meta.conversionEventName` and
+`meta.defaultConversionValue` (+ survey `intentValues` on B/C shapes).
+`Purchase` has no default and no universal sale value.
 
 ---
 
@@ -67,8 +69,9 @@ This repo does **not** use env vars `META_VALUE_QUALIFIED` / `_SCHEDULE` / `_SHO
 |-------|--------|---------|-------------------|
 | [ ] | **CF secret** `CRM_CALLBACK_SECRET` | Bearer auth for `POST /api/funnel/{slug}/conversion` | **503** on every stage event — whole value ladder dropped (loud in logs) |
 | [ ] | **GHL** custom value / workflow `site_base_url` | Base URL for callback, e.g. `https://funnel.client.com` | Blank/stale URL → every stage post goes nowhere |
-| [ ] | **GHL** workflow posts to `{site_base_url}/api/funnel/{slug}/conversion` | Schedule / show / sale upstream | No downstream Meta lifecycle events |
-| [ ] | Callback body includes stable `idempotencyKey` | Dedupes retries | Duplicate Meta events |
+| [ ] | **GHL** workflow posts to `{site_base_url}/api/funnel/{slug}/conversion` | Qualified / appointment / show / sale upstream | No downstream Meta lifecycle events |
+| [ ] | Callback body includes the stable webhook `leadUuid` | Joins the original D1 lead and stored attribution | Callback cannot match the lead |
+| [ ] | Callback body includes stable `idempotencyKey` | Stores as `downstream_conversions.external_id`; duplicate responses reuse `downstream_conversions.event_id` | Duplicate Meta events |
 
 Example:
 
@@ -78,15 +81,22 @@ Authorization: Bearer <CRM_CALLBACK_SECRET>
 Content-Type: application/json
 
 {
-  "leadId": "<uuid from webhook payload>",
+  "leadUuid": "<uuid from webhook payload>",
   "idempotencyKey": "ghl-appointment-<contact-id>",
   "stage": "appointment",
-  "value": 250,
   "currency": "USD"
 }
 ```
 
-Allowed `stage`: `appointment` | `show` | `sale`.
+Allowed `stage`: `qualified` | `appointment` | `show` | `sale`.
+
+For `qualified`, `appointment`, and `show`, an explicitly supplied finite
+nonnegative `value` is preserved; when omitted, the defaults are `75`, `300`,
+and `600`. `sale` requires an explicit value greater than zero. The callback
+reuses the original lead's `first_url`, `original_query_string`, `fbc`, `fbp`,
+IP address, and user agent.
+
+Full contract: [`OFFLINE_CONVERSION_CONTRACT.md`](OFFLINE_CONVERSION_CONTRACT.md).
 
 ---
 

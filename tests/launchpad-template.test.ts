@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { findManifestCredentialValues } from "../scripts/manifest-secret-policy";
 
 const manifestPath = resolve(import.meta.dirname, "../launchpad.template.json");
 
@@ -16,6 +17,32 @@ describe("launchpad.template.json", () => {
       type: string;
       shape: string;
       active: boolean;
+      offlineConversionContract: {
+        version: number;
+        joinKey: string;
+        callback: {
+          method: string;
+          route: string;
+          authentication: string;
+        };
+        stageMappings: Array<{
+          pipelineStage: string;
+          callbackStage: string;
+          metaEvent: string;
+        }>;
+        requiredRuntimeSecrets: string[];
+        deduplication: {
+          idempotencyKey: string;
+          eventId: string;
+        };
+        originalAttribution: {
+          reuse: boolean;
+          fields: string[];
+        };
+        purchase: {
+          requiresExplicitPositiveValue: boolean;
+        };
+      };
     };
 
     expect(manifest).toEqual({
@@ -28,7 +55,100 @@ describe("launchpad.template.json", () => {
       type: "paid-funnel",
       shape: "A",
       active: true,
+      offlineConversionContract: {
+        version: 1,
+        joinKey: "leadUuid",
+        callback: {
+          method: "POST",
+          route: "/api/funnel/{slug}/conversion",
+          authentication: "Bearer CRM_CALLBACK_SECRET",
+        },
+        stageMappings: [
+          {
+            pipelineStage: "Hot Pursuit",
+            callbackStage: "qualified",
+            metaEvent: "QualifiedLead",
+          },
+          {
+            pipelineStage: "Appointment Set",
+            callbackStage: "appointment",
+            metaEvent: "Schedule",
+          },
+          {
+            pipelineStage: "Showed",
+            callbackStage: "show",
+            metaEvent: "Showed",
+          },
+          {
+            pipelineStage: "Sold",
+            callbackStage: "sale",
+            metaEvent: "Purchase",
+          },
+        ],
+        requiredRuntimeSecrets: [
+          "CRM_CALLBACK_SECRET",
+          "META_CAPI_ACCESS_TOKEN",
+          "GHL_WEBHOOK_URL",
+        ],
+        deduplication: {
+          idempotencyKey: "downstream_conversions.external_id",
+          eventId: "downstream_conversions.event_id",
+        },
+        originalAttribution: {
+          reuse: true,
+          fields: [
+            "first_url",
+            "original_query_string",
+            "fbc",
+            "fbp",
+            "ip_address",
+            "user_agent",
+          ],
+        },
+        purchase: { requiresExplicitPositiveValue: true },
+      },
     });
-    expect(JSON.stringify(manifest)).not.toMatch(/secret|token|password/i);
+  });
+
+  it("allows required secret names but rejects runtime credential values", () => {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+
+    expect(findManifestCredentialValues(manifest)).toEqual([]);
+
+    for (const field of [
+      "credential",
+      "password",
+      "secretValue",
+      "token",
+      "webhookSecret",
+    ]) {
+      expect(
+        findManifestCredentialValues({
+          ...manifest,
+          [field]: "test-only-not-a-real-credential",
+        }),
+      ).toEqual([`${field} may not contain a runtime secret value`]);
+    }
+
+    const offlineConversionContract = manifest.offlineConversionContract as {
+      requiredRuntimeSecrets: string[];
+    };
+    expect(
+      findManifestCredentialValues({
+        ...manifest,
+        offlineConversionContract: {
+          ...offlineConversionContract,
+          requiredRuntimeSecrets: [
+            ...offlineConversionContract.requiredRuntimeSecrets,
+            "test-only-not-a-secret-name",
+          ],
+        },
+      }),
+    ).toEqual([
+      "offlineConversionContract.requiredRuntimeSecrets may contain required secret names only",
+    ]);
   });
 });

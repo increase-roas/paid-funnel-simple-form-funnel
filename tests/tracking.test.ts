@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBrowserAdvancedMatching } from "../src/lib/tracking";
-import type { FunnelSession } from "../src/types/funnel";
+import {
+  buildBrowserAdvancedMatching,
+  buildCapiPayload,
+} from "../src/lib/tracking";
+import type { EventRecord, FunnelSession } from "../src/types/funnel";
 
 const session: FunnelSession = {
   sessionId: "b1daff95-0306-491f-8348-2725814ed6f1",
@@ -38,5 +41,40 @@ describe("progressive Meta advanced matching", () => {
       st: "ND",
       country: "US",
     });
+  });
+
+  it("uses system_generated only for explicitly marked offline lifecycle events", async () => {
+    const websiteRecord: EventRecord = {
+      eventId: "website-event",
+      sessionId: session.sessionId,
+      leadId: session.leadId,
+      eventName: "Lead",
+      source: "server",
+      eventTime: 1_786_622_400,
+      eventSourceUrl: session.firstUrl,
+      sequence: 1,
+      customData: {},
+    };
+    const offlineRecord: EventRecord = {
+      ...websiteRecord,
+      eventId: "offline-event",
+      eventName: "QualifiedLead",
+      capiActionSource: "system_generated",
+    };
+    const request = new Request(session.firstUrl);
+
+    const offlinePayload = await buildCapiPayload(
+      offlineRecord,
+      session,
+      request,
+    );
+    const websitePayload = await buildCapiPayload(
+      websiteRecord,
+      session,
+      request,
+    );
+
+    expect(offlinePayload.data[0]?.action_source).toBe("system_generated");
+    expect(websitePayload.data[0]?.action_source).toBe("website");
   });
 });

@@ -59,6 +59,7 @@ export interface EventRecord {
   eventSourceUrl: string;
   sequence: number;
   customData: Record<string, unknown>;
+  capiActionSource?: "system_generated";
 }
 
 export interface MetaUserData {

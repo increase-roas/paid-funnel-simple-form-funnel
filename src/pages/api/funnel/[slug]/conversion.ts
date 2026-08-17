@@ -7,19 +7,45 @@ import type { EventRecord, FunnelSession } from "../../../../types/funnel";
 
 export const prerender = false;
 
-const callbackSchema = z.object({
-  leadId: z.string().uuid(),
-  idempotencyKey: z.string().trim().min(6).max(160),
-  stage: z.enum(["appointment", "show", "sale"]),
-  value: z.number().nonnegative(),
-  currency: z.string().length(3).default("USD"),
-  occurredAt: z.string().datetime().optional(),
-});
+const callbackSchema = z
+  .object({
+    leadUuid: z.string().uuid().optional(),
+    leadId: z.string().uuid().optional(),
+    idempotencyKey: z.string().trim().min(6).max(160),
+    stage: z.enum(["qualified", "appointment", "show", "sale"]),
+    value: z.number().finite().nonnegative().optional(),
+    currency: z.string().length(3).default("USD"),
+    occurredAt: z.string().datetime().optional(),
+  })
+  .superRefine((input, context) => {
+    if (!input.leadUuid && !input.leadId) {
+      context.addIssue({
+        code: "custom",
+        path: ["leadUuid"],
+        message: "leadUuid is required",
+      });
+    }
+    if (input.leadUuid && input.leadId && input.leadUuid !== input.leadId) {
+      context.addIssue({
+        code: "custom",
+        path: ["leadId"],
+        message: "leadId must match leadUuid when both are provided",
+      });
+    }
+    if (input.stage === "sale" && (input.value === undefined || input.value <= 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["value"],
+        message: "sale requires an explicit positive value",
+      });
+    }
+  });
 
-const eventNames = {
-  appointment: "Schedule",
-  show: "AppointmentShowed",
-  sale: "Purchase",
+const stageDefinitions = {
+  qualified: { eventName: "QualifiedLead", defaultValue: 75 },
+  appointment: { eventName: "Schedule", defaultValue: 300 },
+  show: { eventName: "Showed", defaultValue: 600 },
+  sale: { eventName: "Purchase", defaultValue: null },
 } as const;
 
 async function safeSecretEquals(provided: string, expected: string): Promise<boolean> {
@@ -51,6 +77,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
   if (!input.success) {
     return Response.json({ error: "Invalid callback payload", issues: input.error.issues }, { status: 400 });
   }
+  const leadUuid = input.data.leadUuid ?? input.data.leadId!;
 
   const existing = await env.FUNNEL_DB.prepare(
     "SELECT event_id FROM downstream_conversions WHERE external_id = ? LIMIT 1",
@@ -58,7 +85,12 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
     .bind(input.data.idempotencyKey)
     .first<{ event_id: string }>();
   if (existing) {
-    return Response.json({ accepted: true, duplicate: true, eventId: existing.event_id });
+    return Response.json({
+      accepted: true,
+      duplicate: true,
+      eventId: existing.event_id,
+      leadUuid,
+    });
   }
 
   const lead = await env.FUNNEL_DB.prepare(
@@ -67,7 +99,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
             city, state, country, ip_address, user_agent, created_at, updated_at
      FROM leads WHERE id = ? AND funnel_slug = ? LIMIT 1`,
   )
-    .bind(input.data.leadId, funnelConfig.funnel.slug)
+    .bind(leadUuid, funnelConfig.funnel.slug)
     .first<{
       id: string;
       session_id: string;
@@ -101,10 +133,15 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
 
   const eventId = crypto.randomUUID();
   const databaseId = crypto.randomUUID();
-  const eventName = eventNames[input.data.stage];
+  const stageDefinition = stageDefinitions[input.data.stage];
+  const eventName = stageDefinition.eventName;
+  const conversionValue = input.data.value ?? stageDefinition.defaultValue;
+  if (conversionValue === null) {
+    return new Response("sale requires an explicit positive value", { status: 400 });
+  }
   const now = new Date().toISOString();
   const customData = {
-    value: input.data.value,
+    value: conversionValue,
     currency: input.data.currency.toUpperCase(),
     funnel_slug: funnelConfig.funnel.slug,
     lifecycle_stage: input.data.stage,
@@ -120,7 +157,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
       input.data.idempotencyKey,
       lead.id,
       input.data.stage,
-      input.data.value,
+      conversionValue,
       eventId,
       new Date(eventTime * 1_000).toISOString(),
       now,
@@ -182,6 +219,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
     eventSourceUrl: lead.first_url,
     sequence: 1,
     customData,
+    capiActionSource: "system_generated",
   };
 
   const originalHeaders = new Headers();
@@ -190,5 +228,8 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
   const attributionRequest = new Request(lead.first_url, { headers: originalHeaders });
   locals.cfContext.waitUntil(dispatchServerEvent(record, session, attributionRequest));
 
-  return Response.json({ accepted: true, duplicate: false, eventId }, { status: 202 });
+  return Response.json(
+    { accepted: true, duplicate: false, eventId, leadUuid },
+    { status: 202 },
+  );
 };

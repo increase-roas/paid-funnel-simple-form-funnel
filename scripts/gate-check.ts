@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { funnelConfig, getActiveInventoryProducts, getStep, getTotalSteps } from "../src/lib/config";
+import { findManifestCredentialValues } from "./manifest-secret-policy";
 
 const root = resolve(import.meta.dirname, "..");
 const failures: string[] = [];
@@ -120,7 +121,9 @@ requireCondition(manifest.defaultBranch === "main", "launchpad.template.json def
 requireCondition(manifest.type === "paid-funnel", "launchpad.template.json type must be paid-funnel.");
 requireCondition(manifest.shape === "A", "launchpad.template.json shape must be A.");
 requireCondition(manifest.active === true, "launchpad.template.json must be active.");
-requireCondition(!/secret|token|password/i.test(manifestRaw), "launchpad.template.json must not contain secrets.");
+for (const violation of findManifestCredentialValues(manifest)) {
+  failures.push(`launchpad.template.json ${violation}.`);
+}
 const migration = read("migrations/0001_initial.sql");
 const validation = read("src/lib/validation.ts");
 const worker = read("src/worker.ts");
