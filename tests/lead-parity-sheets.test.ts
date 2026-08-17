@@ -61,19 +61,25 @@ describe("Google Sheets lead vault", () => {
     expect(JSON.parse(String(writeInit?.body))).toEqual({ values: [expect.arrayContaining([lead.leadUuid])] });
   });
 
-  it("appends failed CRM delivery to Missed Leads", async () => {
+  it("upserts failed CRM delivery in Missed Leads by stable UUID", async () => {
     mockSigning();
     const fetchMock = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token" }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ values: [["lead_uuid"], ["other"], [lead.leadUuid]] }), {
+          status: 200,
+        }),
+      )
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token" }), { status: 200 }))
       .mockResolvedValueOnce(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await appendMissedLead(config, lead, "GHL delivery failed");
 
-    const [writeUrl, writeInit] = fetchMock.mock.calls[1]!;
-    expect(String(writeUrl)).toContain("%27Missed%20Leads%27!A1:append");
-    expect(writeInit?.method).toBe("POST");
+    const [writeUrl, writeInit] = fetchMock.mock.calls[3]!;
+    expect(String(writeUrl)).toContain("'Missed%20Leads'!A3%3AM3");
+    expect(writeInit?.method).toBe("PUT");
     expect(String(writeInit?.body)).toContain(lead.leadUuid);
   });
 });
@@ -105,5 +111,32 @@ describe("secret-safe GHL errors", () => {
       detail: "GHL delivery failed (HTTP 500)",
     });
     expect(JSON.stringify(result)).not.toContain("fake-secret");
+  });
+
+  it("rejects a successful HTTP response that has no contact ID", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ contact: {} }), { status: 200 })),
+    );
+
+    const result = await syncToGhl(
+      { apiKey: "ghl-fake-secret", locationId: "location" },
+      {
+        firstName: "Alex",
+        lastName: "Lobaito",
+        email: "alex@example.com",
+        phone: "+17015550142",
+        source: "Paid Ads Funnel",
+        tags: ["website-lead"],
+        customFields: { lead_uuid: lead.leadUuid },
+      },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      status: 200,
+      contactId: "",
+      detail: "GHL response contained no contact ID",
+    });
   });
 });

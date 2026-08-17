@@ -127,4 +127,14 @@ describe("form submission ordering", () => {
     expect(persist).toBeGreaterThan(-1);
     expect(deliver).toBeGreaterThan(persist);
   });
+
+  it("alerts separately when the Sheets vault fails even if GHL succeeds", () => {
+    const source = readFileSync(
+      new URL("../src/pages/api/funnel/[slug]/step/[n].ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('if (delivery.vaultStatus === "failed")');
+    expect(source).toContain('stage: "lead-vault"');
+  });
 });

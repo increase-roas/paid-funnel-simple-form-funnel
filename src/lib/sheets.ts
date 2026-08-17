@@ -125,13 +125,20 @@ export async function appendMissedLead(
   lead: VaultLead,
   reason: string,
 ): Promise<void> {
-  const response = await sheetsFetch(
+  const lookup = await sheetsFetch(config, "/values/%27Missed%20Leads%27!A%3AA");
+  if (!lookup.ok) throw new Error(`Missed-lead lookup failed (${lookup.status})`);
+  const lookupBody = (await lookup.json()) as { values?: string[][] };
+  const row = lookupBody.values?.findIndex((candidate) => candidate[0] === lead.leadUuid) ?? -1;
+  const range = row >= 0 ? `'Missed Leads'!A${row + 1}:M${row + 1}` : "'Missed Leads'!A1";
+  const mode = row >= 0 ? "PUT" : "POST";
+  const suffix = row >= 0 ? "" : ":append";
+  const write = await sheetsFetch(
     config,
-    "/values/%27Missed%20Leads%27!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    `/values/${encodeURIComponent(range)}${suffix}?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     {
-      method: "POST",
+      method: mode,
       body: JSON.stringify({ values: [[...values(lead), reason.slice(0, 300)]] }),
     },
   );
-  if (!response.ok) throw new Error(`Missed-lead write failed (${response.status})`);
+  if (!write.ok) throw new Error(`Missed-lead write failed (${write.status})`);
 }

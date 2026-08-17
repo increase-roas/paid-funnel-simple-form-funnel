@@ -10,6 +10,8 @@ interface DeliveryResult {
   status: number;
   error?: string;
   ghlContactId?: string;
+  vaultStatus: "sent" | "failed" | "unconfigured";
+  vaultError?: string;
 }
 
 function getSheetsConfig(): SheetsConfig | null {
@@ -27,12 +29,10 @@ function getSheetsConfig(): SheetsConfig | null {
   };
 }
 
-function interestedProduct(session: FunnelSession): string {
+function interestedProduct(session: FunnelSession) {
   const answerValues = Object.values(session.answers).flat();
-  return (
-    getActiveInventoryProducts().find(
-      (product) => answerValues.includes(product.id) || answerValues.includes(product.name),
-    )?.name ?? ""
+  return getActiveInventoryProducts().find(
+    (product) => answerValues.includes(product.id) || answerValues.includes(product.name),
   );
 }
 
@@ -56,10 +56,16 @@ function getVaultLead(session: FunnelSession, ghlContactId: string): VaultLead {
 
 export async function deliverLeadToGhl(session: FunnelSession): Promise<DeliveryResult> {
   if (!session.leadId || !session.contact) {
-    return { ok: false, status: 0, error: "Persisted contact is required for lead delivery." };
+    return {
+      ok: false,
+      status: 0,
+      error: "Persisted contact is required for lead delivery.",
+      vaultStatus: "unconfigured",
+    };
   }
 
-  const productName = interestedProduct(session);
+  const product = interestedProduct(session);
+  const productName = product?.name ?? "";
   const ghlConfigured = Boolean(env.GHL_API_KEY && env.GHL_LOCATION_ID);
   const ghl = ghlConfigured
     ? await syncToGhl(
@@ -76,6 +82,9 @@ export async function deliverLeadToGhl(session: FunnelSession): Promise<Delivery
             funnel_slug: funnelConfig.funnel.slug,
             zip: session.zip ?? "",
             product_interest: productName,
+            product_id: product?.id ?? "",
+            product_name: product?.name ?? "",
+            product_price: product?.priceLabel ?? "",
             original_query_string: session.originalQueryString,
             first_url: session.firstUrl,
           },
@@ -109,8 +118,21 @@ export async function deliverLeadToGhl(session: FunnelSession): Promise<Delivery
   });
 
   return ghl.ok
-    ? { ok: true, status: ghl.status, ghlContactId: ghl.contactId }
-    : { ok: false, status: ghl.status, error: ghl.detail, ghlContactId: ghl.contactId };
+    ? {
+        ok: true,
+        status: ghl.status,
+        ghlContactId: ghl.contactId,
+        vaultStatus,
+        vaultError: vaultError || undefined,
+      }
+    : {
+        ok: false,
+        status: ghl.status,
+        error: ghl.detail,
+        ghlContactId: ghl.contactId,
+        vaultStatus,
+        vaultError: vaultError || undefined,
+      };
 }
 
 export async function sendSubmissionAlert(input: {

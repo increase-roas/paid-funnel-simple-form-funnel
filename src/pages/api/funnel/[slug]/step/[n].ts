@@ -189,6 +189,17 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
   if (session.leadId) await markLeadStatus(session.leadId, "qualified");
 
   const delivery = await deliverLeadToGhl(session);
+  if (delivery.vaultStatus === "failed") {
+    locals.cfContext.waitUntil(
+      sendSubmissionAlert({
+        leadId: session.leadId,
+        sessionId: session.sessionId,
+        stage: "lead-vault",
+        message: delivery.vaultError ?? "Lead-vault delivery failed.",
+      }),
+    );
+  }
+
   if (!delivery.ok) {
     locals.cfContext.waitUntil(
       sendSubmissionAlert({

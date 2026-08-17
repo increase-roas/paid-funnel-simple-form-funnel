@@ -60,8 +60,8 @@ describe("launchpad.template.json", () => {
         joinKey: "leadUuid",
         callback: {
           method: "POST",
-          route: "/api/funnel/{slug}/conversion",
-          authentication: "Bearer CRM_CALLBACK_SECRET",
+          route: "/api/lead-stage",
+          authentication: "Bearer STAGE_WEBHOOK_SECRET",
         },
         stageMappings: [
           {
@@ -86,15 +86,14 @@ describe("launchpad.template.json", () => {
           },
         ],
         requiredRuntimeSecrets: [
-          "CRM_CALLBACK_SECRET",
-          "STAGE_WEBHOOK_SECRET",
-          "META_PIXEL_ID",
-          "META_CAPI_ACCESS_TOKEN",
           "GHL_API_KEY",
           "GHL_LOCATION_ID",
           "GOOGLE_SHEETS_ID",
           "GOOGLE_SERVICE_ACCOUNT_EMAIL",
           "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+          "META_PIXEL_ID",
+          "META_CAPI_ACCESS_TOKEN",
+          "STAGE_WEBHOOK_SECRET",
         ],
         deduplication: {
           idempotencyKey: "downstream_conversions.external_id",

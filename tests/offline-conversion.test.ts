@@ -330,7 +330,7 @@ describe("lead delivery payload", () => {
         country: leadRow.country,
         postalCode: leadRow.zip,
       },
-      answers: {},
+      answers: { product: [funnelConfig.inventory.products[0]!.id] },
       contact: {
         firstName: leadRow.first_name,
         lastName: leadRow.last_name,
@@ -362,7 +362,12 @@ describe("lead delivery payload", () => {
       phone: leadRow.phone_e164,
     });
     expect(body.customFields).toEqual(
-      expect.arrayContaining([{ key: "lead_uuid", field_value: leadUuid }]),
+      expect.arrayContaining([
+        { key: "lead_uuid", field_value: leadUuid },
+        { key: "product_id", field_value: funnelConfig.inventory.products[0]!.id },
+        { key: "product_name", field_value: funnelConfig.inventory.products[0]!.name },
+        { key: "product_price", field_value: funnelConfig.inventory.products[0]!.priceLabel },
+      ]),
     );
 
     const deliveryUpdate = database.statements.find((statement) =>

@@ -58,9 +58,17 @@ export async function syncToGhl(
     let contactId = "";
     try {
       const data = JSON.parse(text) as { contact?: { id?: string }; id?: string };
-      contactId = data.contact?.id ?? data.id ?? "";
+      contactId = (data.contact?.id ?? data.id ?? "").trim();
     } catch {
-      // The contact landed; an unexpected response body only prevents ID capture.
+      // A 2xx response without a usable contact ID is not a completed delivery.
+    }
+    if (!contactId) {
+      return {
+        ok: false,
+        status: response.status,
+        contactId: "",
+        detail: "GHL response contained no contact ID",
+      };
     }
     return { ok: true, status: response.status, contactId, detail: "" };
   } catch {
