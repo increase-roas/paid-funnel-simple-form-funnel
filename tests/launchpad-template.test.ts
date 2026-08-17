@@ -87,8 +87,14 @@ describe("launchpad.template.json", () => {
         ],
         requiredRuntimeSecrets: [
           "CRM_CALLBACK_SECRET",
+          "STAGE_WEBHOOK_SECRET",
+          "META_PIXEL_ID",
           "META_CAPI_ACCESS_TOKEN",
-          "GHL_WEBHOOK_URL",
+          "GHL_API_KEY",
+          "GHL_LOCATION_ID",
+          "GOOGLE_SHEETS_ID",
+          "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+          "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
         ],
         deduplication: {
           idempotencyKey: "downstream_conversions.external_id",

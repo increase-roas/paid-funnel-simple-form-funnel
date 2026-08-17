@@ -198,15 +198,14 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
         message: delivery.error ?? `GHL delivery failed with HTTP ${delivery.status}.`,
       }),
     );
-    return fail(step.number, "temporary", 503);
-  }
-
-  const deliveredAt = new Date().toISOString();
-  session.deliveredToGhlAt = deliveredAt;
-  session.leadStatus = "delivered";
-  await saveFunnelSession(session);
-  if (session.leadId) {
-    await markLeadStatus(session.leadId, "delivered", { deliveredAt });
+  } else {
+    const deliveredAt = new Date().toISOString();
+    session.deliveredToGhlAt = deliveredAt;
+    session.leadStatus = "delivered";
+    await saveFunnelSession(session);
+    if (session.leadId) {
+      await markLeadStatus(session.leadId, "delivered", { deliveredAt });
+    }
   }
 
   const bookStep = getBookStep();

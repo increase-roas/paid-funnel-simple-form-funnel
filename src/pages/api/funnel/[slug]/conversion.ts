@@ -63,13 +63,16 @@ async function safeSecretEquals(provided: string, expected: string): Promise<boo
   return difference === 0;
 }
 
-export const POST: APIRoute = async ({ request, params, locals }) => {
+export async function handleConversion(
+  { request, params, locals }: Parameters<APIRoute>[0],
+  callbackSecret: string | undefined,
+): Promise<Response> {
   if (!isKnownSlug(params.slug)) return new Response("Not found", { status: 404 });
-  if (!env.CRM_CALLBACK_SECRET) return new Response("Callback is not configured", { status: 503 });
+  if (!callbackSecret) return new Response("Callback is not configured", { status: 503 });
 
   const authorization = request.headers.get("authorization") ?? "";
   const providedSecret = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if (!(await safeSecretEquals(providedSecret, env.CRM_CALLBACK_SECRET))) {
+  if (!(await safeSecretEquals(providedSecret, callbackSecret))) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -232,4 +235,6 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
     { accepted: true, duplicate: false, eventId, leadUuid },
     { status: 202 },
   );
-};
+}
+
+export const POST: APIRoute = context => handleConversion(context, env.CRM_CALLBACK_SECRET);

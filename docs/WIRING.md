@@ -1,6 +1,6 @@
 # Wiring checklist — paid-funnel-simple-form-funnel
 
-Use this before go-live. Check every row. **This repo is the Astro paid funnel** (ZIP → contact → thank-you inventory). It is **not** the Lead Vault sheet stack — rows marked **N/A here** belong to other deployables or GHL-side setup.
+Use this before go-live. Check every row. **This repo is the Astro paid funnel** (ZIP → contact → thank-you inventory) with the same D1-first GHL and lead-vault boundaries as the dealer-site reference.
 
 Legend: **CF secret** = `npx wrangler secret put …` · **config** = `funnel.config.ts` · **GHL** = configure in GoHighLevel workflow/custom values
 
@@ -21,16 +21,10 @@ Legend: **CF secret** = `npx wrangler secret put …` · **config** = `funnel.co
 
 | Check | Where | Purpose | If missing / wrong |
 |-------|--------|---------|-------------------|
-| [ ] | **CF secret** `GHL_WEBHOOK_URL` **or** **config** `ghlWebhookUrl` | Inbound webhook — GHL workflow creates/updates contact from funnel JSON | No GHL contact; lead still saved in D1; visitor sees contact-step error; optional alert fires |
-| [ ] | **GHL** workflow maps webhook fields → contact + tags | Contact upsert inside GHL (this repo does **not** call GHL REST API) | Contact empty or wrong fields |
-| [ ] | **GHL** workflow on webhook failure → alert you | Ops visibility | Failed delivery only in Worker logs |
-
-### Not wired in this repo (Lead Vault / direct API pattern)
-
-| User name | Status here |
-|-----------|-------------|
-| `GHL_API_KEY` | **N/A** — no direct GHL API upsert in this funnel |
-| `GHL_LOCATION_ID` | **N/A** — location is implicit in the inbound webhook URL |
+| [ ] | **CF secret** `GHL_API_KEY` | Direct contact upsert without exposing the credential to browser or Git | Lead remains in D1; a `Missed Leads` row and optional alert record the delivery failure |
+| [ ] | **CF secret** `GHL_LOCATION_ID` | Selects the client GHL location | GHL upsert is not attempted |
+| [ ] | **CF secrets** `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | UUID-upserted `All Leads` vault plus `Missed Leads` delivery failures | D1 remains authoritative, but the sheet mirror is marked unconfigured |
+| [ ] | **CF secret** `STAGE_WEBHOOK_SECRET` | Authenticates `/api/phone-lead` and `/api/lead-stage` | Both compatibility endpoints return 503 |
 
 ---
 
@@ -104,13 +98,7 @@ Full contract: [`OFFLINE_CONVERSION_CONTRACT.md`](OFFLINE_CONVERSION_CONTRACT.md
 
 | Check | Where | Purpose | If missing / wrong |
 |-------|--------|---------|-------------------|
-| [ ] | **CF secret** `SUBMISSION_ALERT_WEBHOOK_URL` | Slack-compatible webhook on GHL delivery failure | Failures only in console — nobody pinged; site otherwise OK |
-
-### Not wired in this repo
-
-| User name | Status here |
-|-----------|-------------|
-| `ALERT_WEBHOOK_URL` | Use **`SUBMISSION_ALERT_WEBHOOK_URL`** (same role, different name) |
+| [ ] | **CF secret** `ALERT_WEBHOOK_URL` | Slack-compatible webhook on GHL delivery failure | Failures only in console — nobody pinged; site otherwise OK |
 
 ---
 
@@ -118,11 +106,11 @@ Full contract: [`OFFLINE_CONVERSION_CONTRACT.md`](OFFLINE_CONVERSION_CONTRACT.md
 
 | User name | Status here |
 |-----------|-------------|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | **N/A** — no Sheet rows in this repo |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | **N/A** |
-| `GOOGLE_SHEETS_ID` | **N/A** |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Required for signed Sheets API access |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Required for signed Sheets API access |
+| `GOOGLE_SHEETS_ID` | Required for UUID upserts to `All Leads` and failures to `Missed Leads` |
 
-Leads live in **Cloudflare D1** (`leads`, `tracking_events`). Export via dashboard or separate Lead Vault if needed.
+Leads are written to **Cloudflare D1** first, then mirrored to Google Sheets. D1 remains authoritative when any external delivery fails.
 
 ---
 
@@ -190,9 +178,14 @@ Inventory is **config-only**: five slots in `funnel.config.ts` → `inventory.pr
 
 ```bash
 npx wrangler secret put META_CAPI_ACCESS_TOKEN
-npx wrangler secret put GHL_WEBHOOK_URL
+npx wrangler secret put GHL_API_KEY
+npx wrangler secret put GHL_LOCATION_ID
+npx wrangler secret put GOOGLE_SHEETS_ID
+npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_EMAIL
+npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+npx wrangler secret put STAGE_WEBHOOK_SECRET
 npx wrangler secret put CRM_CALLBACK_SECRET
-npx wrangler secret put SUBMISSION_ALERT_WEBHOOK_URL   # optional
+npx wrangler secret put ALERT_WEBHOOK_URL               # optional
 ```
 
 Local: copy `.dev.vars.example` → `.dev.vars`.

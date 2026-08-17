@@ -2,16 +2,26 @@
 # See docs/WIRING.md for full checklist.
 
 # Meta CAPI (required for server conversions in prod)
+META_PIXEL_ID=""
 META_CAPI_ACCESS_TOKEN=""
 
 # Dev/smoke ONLY — remove before production deploy
 META_TEST_EVENT_CODE=""
 
-# GHL inbound webhook (workflow trigger URL)
-GHL_WEBHOOK_URL=""
+# Direct GHL lead delivery
+GHL_API_KEY=""
+GHL_LOCATION_ID=""
+
+# Google Sheets lead vault
+GOOGLE_SHEETS_ID=""
+GOOGLE_SERVICE_ACCOUNT_EMAIL=""
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=""
+
+# Phone lead and canonical lifecycle webhook authentication
+STAGE_WEBHOOK_SECRET="change-me-locally"
 
 # Bearer secret for POST /api/funnel/{slug}/conversion (maps to STAGE_WEBHOOK_SECRET in Lead Vault docs)
 CRM_CALLBACK_SECRET="change-me-locally"
 
-# Slack-compatible alert on GHL delivery failure (maps to ALERT_WEBHOOK_URL)
-SUBMISSION_ALERT_WEBHOOK_URL=""
+# Optional Slack-compatible alert on GHL delivery failure
+ALERT_WEBHOOK_URL=""

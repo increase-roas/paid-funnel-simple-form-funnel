@@ -4,6 +4,7 @@ import { deliverLeadToGhl } from "../src/lib/lead-delivery";
 import { funnelConfig } from "../src/lib/config";
 import { dispatchServerEvent } from "../src/lib/tracking";
 import { POST } from "../src/pages/api/funnel/[slug]/conversion";
+import { POST as leadStagePost } from "../src/pages/api/lead-stage";
 import type { FunnelSession } from "../src/types/funnel";
 
 vi.mock("../src/lib/tracking", () => ({
@@ -14,6 +15,7 @@ interface TestStatement {
   sql: string;
   params: unknown[];
   first<T>(): Promise<T | null>;
+  run(): Promise<{ success: true }>;
 }
 
 const leadUuid = "32c886da-4ac7-4cc0-9ee2-6785ae23d85f";
@@ -64,6 +66,7 @@ class TestDatabase {
             if (sql.includes("FROM leads")) return leadRow as unknown as T;
             return null;
           },
+          run: async () => ({ success: true }),
         };
         this.statements.push(statement);
         return statement;
@@ -84,6 +87,7 @@ type TestRouteHandler = (context: {
 }) => Promise<Response>;
 
 const post = POST as unknown as TestRouteHandler;
+const postLeadStage = leadStagePost as unknown as TestRouteHandler;
 const dispatchServerEventMock = vi.mocked(dispatchServerEvent);
 const workerEnv = env as unknown as Record<string, unknown>;
 
@@ -91,7 +95,6 @@ function setWorkerEnv(database: TestDatabase): void {
   workerEnv.CRM_CALLBACK_SECRET = "callback-secret";
   workerEnv.FUNNEL_DB = database;
   workerEnv.ENVIRONMENT = "test";
-  workerEnv.GHL_WEBHOOK_URL = "https://hooks.example.test/lead";
 }
 
 async function postConversion(
@@ -126,6 +129,32 @@ afterEach(() => {
 });
 
 describe("offline conversion callback", () => {
+  it("keeps the canonical callback secret and the lead-stage secret on separate routes", async () => {
+    const database = new TestDatabase();
+    setWorkerEnv(database);
+    workerEnv.STAGE_WEBHOOK_SECRET = "stage-secret";
+
+    const response = await postLeadStage({
+      request: new Request("https://example.com/api/lead-stage", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer stage-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          leadUuid,
+          idempotencyKey: "stage-qualified-001",
+          stage: "qualified",
+        }),
+      }),
+      params: { slug: "ignored-by-alias" },
+      locals: { cfContext: { waitUntil: vi.fn() } },
+    });
+
+    expect(response.status).toBe(202);
+    expect(database.batches).toHaveLength(1);
+  });
+
   it.each([
     ["qualified", "QualifiedLead", 75],
     ["appointment", "Schedule", 300],
@@ -271,13 +300,19 @@ describe("offline conversion callback", () => {
 });
 
 describe("lead delivery payload", () => {
-  it("sends canonical leadUuid while retaining legacy leadId", async () => {
+  it("uses direct GHL upsert and persists the returned contact ID", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(null, { status: 204 }),
+        new Response(JSON.stringify({ contact: { id: "ghl-contact-123" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    setWorkerEnv(new TestDatabase());
+    const database = new TestDatabase();
+    setWorkerEnv(database);
+    workerEnv.GHL_API_KEY = "test-ghl-key";
+    workerEnv.GHL_LOCATION_ID = "test-location";
 
     const session: FunnelSession = {
       sessionId: leadRow.session_id,
@@ -309,15 +344,31 @@ describe("lead delivery payload", () => {
 
     await expect(deliverLeadToGhl(session)).resolves.toMatchObject({
       ok: true,
-      status: 204,
+      status: 200,
+      ghlContactId: "ghl-contact-123",
     });
 
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://services.leadconnectorhq.com/contacts/upsert",
+    );
     const request = fetchMock.mock.calls[0]?.[1];
     expect(request).toBeDefined();
     const body = JSON.parse(String(request?.body)) as Record<string, unknown>;
     expect(body).toMatchObject({
-      leadUuid,
-      leadId: leadUuid,
+      locationId: "test-location",
+      firstName: leadRow.first_name,
+      lastName: leadRow.last_name,
+      email: leadRow.email_normalized,
+      phone: leadRow.phone_e164,
     });
+    expect(body.customFields).toEqual(
+      expect.arrayContaining([{ key: "lead_uuid", field_value: leadUuid }]),
+    );
+
+    const deliveryUpdate = database.statements.find((statement) =>
+      statement.sql.includes("ghl_contact_id = COALESCE"),
+    );
+    expect(deliveryUpdate?.params[0]).toBe("ghl-contact-123");
+    expect(deliveryUpdate?.params.at(-1)).toBe(leadUuid);
   });
 });

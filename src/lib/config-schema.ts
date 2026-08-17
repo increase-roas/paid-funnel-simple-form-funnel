@@ -122,7 +122,6 @@ export const funnelConfigSchema = z
       defaultCountry: z.string().trim().length(2).transform((value) => value.toUpperCase()),
       duplicateWindowHours: z.number().int().min(1).max(168),
     }),
-    ghlWebhookUrl: z.string().url(),
     inventory: z.object({
       enabled: z.boolean(),
       headline: z.string().trim().min(8).max(140),

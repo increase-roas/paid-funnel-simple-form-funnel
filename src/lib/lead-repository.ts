@@ -150,3 +150,94 @@ export async function markLeadStatus(
     )
     .run();
 }
+
+export async function recordLeadDelivery(
+  leadId: string,
+  result: {
+    ghlContactId?: string;
+    ghlStatus: "sent" | "failed" | "unconfigured";
+    ghlError?: string;
+    vaultStatus: "sent" | "failed" | "unconfigured";
+    vaultError?: string;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  await env.FUNNEL_DB.prepare(
+    `UPDATE leads SET
+      ghl_contact_id = COALESCE(?, ghl_contact_id),
+      ghl_status = ?,
+      ghl_error = ?,
+      delivered_to_ghl_at = CASE WHEN ? = 'sent' THEN COALESCE(delivered_to_ghl_at, ?) ELSE delivered_to_ghl_at END,
+      vault_status = ?,
+      vault_error = ?,
+      vault_synced_at = CASE WHEN ? = 'sent' THEN ? ELSE vault_synced_at END,
+      updated_at = ?
+    WHERE id = ?`,
+  )
+    .bind(
+      result.ghlContactId || null,
+      result.ghlStatus,
+      result.ghlError?.slice(0, 300) ?? null,
+      result.ghlStatus,
+      now,
+      result.vaultStatus,
+      result.vaultError?.slice(0, 300) ?? null,
+      result.vaultStatus,
+      now,
+      now,
+      leadId,
+    )
+    .run();
+}
+
+export async function findRecentLeadByIdentity(input: {
+  phoneE164: string;
+  emailNormalized: string;
+  now?: Date;
+}): Promise<{ id: string } | null> {
+  const cutoff = new Date((input.now ?? new Date()).getTime() - 24 * 60 * 60 * 1_000).toISOString();
+  if (!input.phoneE164 && !input.emailNormalized) return null;
+  const row = await env.FUNNEL_DB.prepare(
+    `SELECT id FROM leads
+     WHERE created_at >= ?
+       AND ((? <> '' AND phone_e164 = ?) OR (? <> '' AND email_normalized = ?))
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(cutoff, input.phoneE164, input.phoneE164, input.emailNormalized, input.emailNormalized)
+    .first<{ id: string }>();
+  return row ?? null;
+}
+
+export async function createPhoneLead(input: {
+  firstName: string;
+  lastName: string;
+  phoneRaw: string;
+  phoneE164: string;
+  emailRaw: string;
+  emailNormalized: string;
+  ghlContactId: string;
+  callId: string;
+  request: Request;
+}): Promise<string> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.FUNNEL_DB.prepare(
+    `INSERT INTO leads (
+      id, session_id, funnel_slug, status, source, first_name, last_name,
+      phone_raw, phone_e164, email_raw, email_normalized, answers_json,
+      first_url, original_query_string, ip_address, user_agent,
+      ghl_contact_id, ghl_status, delivered_to_ghl_at, created_at, updated_at
+    ) VALUES (?, ?, ?, 'qualified', 'phone', ?, ?, ?, ?, ?, ?, '{}',
+      'phone', '', ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id, `phone:${id}`, funnelConfig.funnel.slug,
+      input.firstName || null, input.lastName || null,
+      input.phoneRaw, input.phoneE164, input.emailRaw || null, input.emailNormalized || null,
+      getClientIp(input.request) ?? null, input.request.headers.get("user-agent"),
+      input.ghlContactId || null, input.ghlContactId ? "sent" : "unconfigured",
+      input.ghlContactId ? now : null, now, now,
+    )
+    .run();
+  return id;
+}
