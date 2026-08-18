@@ -64,11 +64,11 @@ Do **not** substitute a React rebuild because terminal is blocked.
 
 ## Canonical runtime names (do not rename)
 
-Secrets: `META_CAPI_ACCESS_TOKEN`, `META_TEST_EVENT_CODE` (test only), `GHL_WEBHOOK_URL`, `CRM_CALLBACK_SECRET`, `SUBMISSION_ALERT_WEBHOOK_URL`
+Secrets: `META_PIXEL_ID`, `META_CAPI_ACCESS_TOKEN`, `META_TEST_EVENT_CODE` (test only), `GHL_API_KEY`, `GHL_LOCATION_ID`, `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`, `STAGE_WEBHOOK_SECRET`, `CRM_CALLBACK_SECRET`, `ALERT_WEBHOOK_URL`
 
 Bindings: `ASSETS`, `FUNNEL_SESSIONS`, `FUNNEL_DB`, `CAPI_RETRY_QUEUE`
 
-Lead create is inbound webhook only. Do not add `GHL_API_KEY` / `GHL_LOCATION_ID` here.
+Lead creation uses the direct GHL API and persists the returned contact ID. Do not add a GHL inbound-webhook URL.
 
 ---
 

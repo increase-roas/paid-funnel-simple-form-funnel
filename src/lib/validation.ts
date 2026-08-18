@@ -29,6 +29,7 @@ export type FinalValidationResult =
   | {
       ok: true;
       contact: ContactData;
+      mergeLeadId?: string;
     }
   | {
       ok: false;
@@ -59,17 +60,17 @@ function hasEveryConfiguredAnswer(session: FunnelSession): boolean {
   });
 }
 
-async function isDuplicateLead(
+async function findDuplicateLead(
   leadId: string,
   phoneE164: string,
   email: string,
-): Promise<boolean> {
+): Promise<{ id: string; source: string } | null> {
   const windowStart = new Date(
     Date.now() - funnelConfig.validation.duplicateWindowHours * 60 * 60 * 1000,
   ).toISOString();
 
   const result = await env.FUNNEL_DB.prepare(
-    `SELECT id FROM leads
+    `SELECT id, source FROM leads
      WHERE id != ?
        AND created_at >= ?
        AND status IN ('qualified', 'delivered')
@@ -77,9 +78,9 @@ async function isDuplicateLead(
      LIMIT 1`,
   )
     .bind(leadId, windowStart, phoneE164, email, email)
-    .first<{ id: string }>();
+    .first<{ id: string; source: string }>();
 
-  return Boolean(result?.id);
+  return result ?? null;
 }
 
 export async function validateFinalSubmission(input: {
@@ -137,7 +138,8 @@ export async function validateFinalSubmission(input: {
     return { ok: false, code: "contact", reason: "The partial lead record is missing." };
   }
 
-  if (await isDuplicateLead(input.session.leadId, phone, email)) {
+  const duplicate = await findDuplicateLead(input.session.leadId, phone, email);
+  if (duplicate && duplicate.source !== "phone") {
     return { ok: false, code: "duplicate", reason: "A matching recent lead already exists." };
   }
 
@@ -149,5 +151,6 @@ export async function validateFinalSubmission(input: {
       phone,
       email,
     },
+    ...(duplicate ? { mergeLeadId: duplicate.id } : {}),
   };
 }

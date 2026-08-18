@@ -1,10 +1,17 @@
 const REQUIRED_SECRET_NAMES = new Set([
-  "CRM_CALLBACK_SECRET",
+  "GHL_API_KEY",
+  "GHL_LOCATION_ID",
+  "GOOGLE_SHEETS_ID",
+  "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+  "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+  "META_PIXEL_ID",
   "META_CAPI_ACCESS_TOKEN",
-  "GHL_WEBHOOK_URL",
+  "STAGE_WEBHOOK_SECRET",
 ]);
 
-const ALLOWED_AUTHENTICATION_METADATA = "Bearer CRM_CALLBACK_SECRET";
+const OPTIONAL_SECRET_NAMES = new Set(["ALERT_WEBHOOK_URL"]);
+
+const ALLOWED_AUTHENTICATION_METADATA = "Bearer STAGE_WEBHOOK_SECRET";
 const SENSITIVE_FIELD_NAME = /(credential|password|secret|token|webhook)/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -26,6 +33,8 @@ export function findManifestCredentialValues(manifest: unknown): string[] {
     ) {
       if (
         !Array.isArray(value) ||
+        value.length !== REQUIRED_SECRET_NAMES.size ||
+        new Set(value).size !== REQUIRED_SECRET_NAMES.size ||
         value.some(
           item =>
             typeof item !== "string" || !REQUIRED_SECRET_NAMES.has(item),
@@ -33,6 +42,23 @@ export function findManifestCredentialValues(manifest: unknown): string[] {
       ) {
         violations.push(
           `${location} may contain required secret names only`,
+        );
+      }
+      return;
+    }
+
+    if (location === "optionalRuntimeSecrets") {
+      if (
+        !Array.isArray(value) ||
+        value.length !== OPTIONAL_SECRET_NAMES.size ||
+        new Set(value).size !== OPTIONAL_SECRET_NAMES.size ||
+        value.some(
+          item =>
+            typeof item !== "string" || !OPTIONAL_SECRET_NAMES.has(item),
+        )
+      ) {
+        violations.push(
+          `${location} may contain optional secret names only`,
         );
       }
       return;

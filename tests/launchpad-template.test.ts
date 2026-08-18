@@ -17,6 +17,7 @@ describe("launchpad.template.json", () => {
       type: string;
       shape: string;
       active: boolean;
+      optionalRuntimeSecrets: string[];
       offlineConversionContract: {
         version: number;
         joinKey: string;
@@ -55,13 +56,14 @@ describe("launchpad.template.json", () => {
       type: "paid-funnel",
       shape: "A",
       active: true,
+      optionalRuntimeSecrets: ["ALERT_WEBHOOK_URL"],
       offlineConversionContract: {
         version: 1,
         joinKey: "leadUuid",
         callback: {
           method: "POST",
-          route: "/api/funnel/{slug}/conversion",
-          authentication: "Bearer CRM_CALLBACK_SECRET",
+          route: "/api/lead-stage",
+          authentication: "Bearer STAGE_WEBHOOK_SECRET",
         },
         stageMappings: [
           {
@@ -86,9 +88,14 @@ describe("launchpad.template.json", () => {
           },
         ],
         requiredRuntimeSecrets: [
-          "CRM_CALLBACK_SECRET",
+          "GHL_API_KEY",
+          "GHL_LOCATION_ID",
+          "GOOGLE_SHEETS_ID",
+          "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+          "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+          "META_PIXEL_ID",
           "META_CAPI_ACCESS_TOKEN",
-          "GHL_WEBHOOK_URL",
+          "STAGE_WEBHOOK_SECRET",
         ],
         deduplication: {
           idempotencyKey: "downstream_conversions.external_id",
@@ -117,6 +124,15 @@ describe("launchpad.template.json", () => {
     >;
 
     expect(findManifestCredentialValues(manifest)).toEqual([]);
+
+    expect(
+      findManifestCredentialValues({
+        ...manifest,
+        optionalRuntimeSecrets: ["ALERT_WEBHOOK_URL", "GHL_WEBHOOK_URL"],
+      }),
+    ).toEqual([
+      "optionalRuntimeSecrets may contain optional secret names only",
+    ]);
 
     for (const field of [
       "credential",

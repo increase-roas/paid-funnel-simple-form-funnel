@@ -219,7 +219,7 @@ export async function sendCapiPayload(payload: CapiPayload): Promise<CapiSendRes
   }
 
   const endpoint = new URL(
-    `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}/${funnelConfig.meta.pixelId}/events`,
+    `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}/${env.META_PIXEL_ID || funnelConfig.meta.pixelId}/events`,
   );
   endpoint.searchParams.set("access_token", env.META_CAPI_ACCESS_TOKEN);
 
@@ -234,17 +234,16 @@ export async function sendCapiPayload(payload: CapiPayload): Promise<CapiSendRes
     });
 
     if (response.ok) return { ok: true, status: response.status };
-    const responseText = (await response.text()).slice(0, 1_000);
     return {
       ok: false,
       status: response.status,
-      error: `Meta CAPI HTTP ${response.status}: ${responseText}`,
+      error: `Meta CAPI HTTP ${response.status}`,
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 0,
-      error: error instanceof Error ? error.message : "Unknown Meta CAPI error.",
+      error: "Meta CAPI request failed",
     };
   } finally {
     clearTimeout(timeout);

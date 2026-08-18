@@ -14,6 +14,7 @@ import { deliverLeadToGhl, sendSubmissionAlert } from "../../../../../lib/lead-d
 import {
   ensureLeadRecord,
   markLeadStatus,
+  mergeFormLeadIntoExistingIdentity,
   syncPartialLead,
   updateValidatedContact,
 } from "../../../../../lib/lead-repository";
@@ -183,12 +184,27 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
   }
 
   session.contact = validation.contact;
+  if (validation.mergeLeadId && validation.mergeLeadId !== session.leadId) {
+    await mergeFormLeadIntoExistingIdentity(session, request, validation.mergeLeadId);
+    session.leadId = validation.mergeLeadId;
+  }
   session.leadStatus = "qualified";
   await saveFunnelSession(session);
   await updateValidatedContact(session);
   if (session.leadId) await markLeadStatus(session.leadId, "qualified");
 
   const delivery = await deliverLeadToGhl(session);
+  if (delivery.vaultStatus === "failed") {
+    locals.cfContext.waitUntil(
+      sendSubmissionAlert({
+        leadId: session.leadId,
+        sessionId: session.sessionId,
+        stage: "lead-vault",
+        message: delivery.vaultError ?? "Lead-vault delivery failed.",
+      }),
+    );
+  }
+
   if (!delivery.ok) {
     locals.cfContext.waitUntil(
       sendSubmissionAlert({
@@ -198,15 +214,14 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
         message: delivery.error ?? `GHL delivery failed with HTTP ${delivery.status}.`,
       }),
     );
-    return fail(step.number, "temporary", 503);
-  }
-
-  const deliveredAt = new Date().toISOString();
-  session.deliveredToGhlAt = deliveredAt;
-  session.leadStatus = "delivered";
-  await saveFunnelSession(session);
-  if (session.leadId) {
-    await markLeadStatus(session.leadId, "delivered", { deliveredAt });
+  } else {
+    const deliveredAt = new Date().toISOString();
+    session.deliveredToGhlAt = deliveredAt;
+    session.leadStatus = "delivered";
+    await saveFunnelSession(session);
+    if (session.leadId) {
+      await markLeadStatus(session.leadId, "delivered", { deliveredAt });
+    }
   }
 
   const bookStep = getBookStep();

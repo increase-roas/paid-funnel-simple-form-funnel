@@ -209,7 +209,6 @@ export function buildFunnelInput(shape: PreviewShape): FunnelInput {
       defaultCountry: "US",
       duplicateWindowHours: 24,
     },
-    ghlWebhookUrl: "https://example.invalid/ghl-webhook",
     inventory: {
       enabled: simpleForm,
       headline: "Active inventory near you",

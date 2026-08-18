@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { funnelConfig, getActiveInventoryProducts, getStep, getTotalSteps } from "../src/lib/config";
+import { hasDuplicateLeadDetectionContract } from "./gate-contract";
 import { findManifestCredentialValues } from "./manifest-secret-policy";
 
 const root = resolve(import.meta.dirname, "..");
@@ -198,7 +199,10 @@ requireCondition(
   !runtimeConfig.includes("ALLOW_ANY_ZIP") && !validation.includes("ALLOW_ANY_ZIP"),
   "Runtime ZIP bypasses are forbidden.",
 );
-requireCondition(validation.includes("isDuplicateLead"), "Duplicate lead detection is missing.");
+requireCondition(
+  hasDuplicateLeadDetectionContract(validation),
+  "Duplicate lead detection is missing.",
+);
 requireCondition(validation.includes("honeypot"), "Server-side honeypot validation is missing.");
 
 requireCondition(worker.includes("message.retry") && worker.includes("2 **"), "Queue exponential retry logic is missing.");

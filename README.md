@@ -171,28 +171,20 @@ Launchpad should clearly label this:
 
 ---
 
-## `GHL_WEBHOOK_URL`
+## Direct GHL lead delivery
 
-**Type:** Cloudflare secret or template-supported config value
+**Type:** Cloudflare secrets
 **Scope:** Client
-**Purpose:** GHL inbound webhook used to create/update the lead.
+**Purpose:** Create or update the lead through the GHL API and persist the returned contact ID.
 
-### IMPORTANT
-
-This Simple Form funnel uses:
-
-`GHL_WEBHOOK_URL`
-
-It does **not** require a direct GHL API integration for lead creation.
-
-Therefore do not substitute:
+Required secrets:
 
 * `GHL_API_KEY`
 * `GHL_LOCATION_ID`
 
-unless a different funnel genuinely uses a direct GHL API contract.
-
-If another template requires direct GHL API access, declare that as an explicit template requirement rather than silently changing this contract.
+The Worker writes the lead to D1 before calling GHL. Failed delivery remains
+recoverable from D1 and is mirrored to the `Missed Leads` sheet when Google
+Sheets is configured. This template does not use a GHL inbound-webhook URL.
 
 ---
 
@@ -220,11 +212,13 @@ Older/internal documentation may refer to a similar concept as:
 
 `STAGE_WEBHOOK_SECRET`
 
-For paid funnels, the canonical runtime name is:
+For the slugged callback above, the canonical runtime name is:
 
 `CRM_CALLBACK_SECRET`
 
-Do not randomly alternate between the two names.
+`POST /api/lead-stage` and `POST /api/phone-lead` intentionally use
+`STAGE_WEBHOOK_SECRET`. The two names are separate route contracts and must not
+be substituted for one another.
 
 ### Recommended Launchpad behavior
 
@@ -234,7 +228,7 @@ Never reuse one client's callback secret for another client.
 
 ---
 
-## `SUBMISSION_ALERT_WEBHOOK_URL`
+## `ALERT_WEBHOOK_URL`
 
 **Type:** Cloudflare secret
 **Scope:** Optional alerting configuration
@@ -242,15 +236,9 @@ Never reuse one client's callback secret for another client.
 
 Canonical paid-funnel name:
 
-`SUBMISSION_ALERT_WEBHOOK_URL`
-
-Older/internal systems may refer to:
-
 `ALERT_WEBHOOK_URL`
 
-Do not use both names interchangeably inside paid-funnel code.
-
-Launchpad can map existing internal storage to this canonical runtime name without renaming database columns unnecessarily.
+Do not use the legacy `SUBMISSION_ALERT_WEBHOOK_URL` name in generated deployments.
 
 ---
 
@@ -360,9 +348,7 @@ serviceAreaZipCodes
 
 ## GHL
 
-```text
-ghlWebhookUrl
-```
+GHL credentials are Worker secrets and never appear in `funnel.config.ts`.
 
 ## Contact Consent
 
