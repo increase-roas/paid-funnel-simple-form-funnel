@@ -39,6 +39,31 @@ afterEach(() => {
 });
 
 describe("Google Sheets lead vault", () => {
+  it("imports the exact decoded PKCS8 bytes from an ArrayBuffer", async () => {
+    const importKey = vi.spyOn(crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey);
+    vi.spyOn(crypto.subtle, "sign").mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ values: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertAllLeads(
+      {
+        ...config,
+        privateKey: "-----BEGIN PRIVATE KEY-----\\nAAECA/8=\\n-----END PRIVATE KEY-----",
+      },
+      lead,
+    );
+
+    const keyData = importKey.mock.calls[0]?.[1];
+    expect(keyData).toBeInstanceOf(ArrayBuffer);
+    if (!(keyData instanceof ArrayBuffer)) throw new Error("Expected PKCS8 key data to be an ArrayBuffer");
+    expect(Array.from(new Uint8Array(keyData))).toEqual([0, 1, 2, 3, 255]);
+  });
+
   it("upserts All Leads by stable UUID", async () => {
     mockSigning();
     const fetchMock = vi

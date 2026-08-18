@@ -9,6 +9,8 @@ const REQUIRED_SECRET_NAMES = new Set([
   "STAGE_WEBHOOK_SECRET",
 ]);
 
+const OPTIONAL_SECRET_NAMES = new Set(["ALERT_WEBHOOK_URL"]);
+
 const ALLOWED_AUTHENTICATION_METADATA = "Bearer STAGE_WEBHOOK_SECRET";
 const SENSITIVE_FIELD_NAME = /(credential|password|secret|token|webhook)/i;
 
@@ -40,6 +42,23 @@ export function findManifestCredentialValues(manifest: unknown): string[] {
       ) {
         violations.push(
           `${location} may contain required secret names only`,
+        );
+      }
+      return;
+    }
+
+    if (location === "optionalRuntimeSecrets") {
+      if (
+        !Array.isArray(value) ||
+        value.length !== OPTIONAL_SECRET_NAMES.size ||
+        new Set(value).size !== OPTIONAL_SECRET_NAMES.size ||
+        value.some(
+          item =>
+            typeof item !== "string" || !OPTIONAL_SECRET_NAMES.has(item),
+        )
+      ) {
+        violations.push(
+          `${location} may contain optional secret names only`,
         );
       }
       return;

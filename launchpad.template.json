@@ -8,6 +8,7 @@
   "type": "paid-funnel",
   "shape": "A",
   "active": true,
+  "optionalRuntimeSecrets": ["ALERT_WEBHOOK_URL"],
   "offlineConversionContract": {
     "version": 1,
     "joinKey": "leadUuid",

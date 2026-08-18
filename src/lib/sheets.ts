@@ -30,10 +30,15 @@ function base64Url(input: Uint8Array | string): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function pemBytes(pem: string): Uint8Array {
+function pemBytes(pem: string): ArrayBuffer {
   const encoded = pem.replace(/\\n/g, "\n").replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
   const binary = atob(encoded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return buffer;
 }
 
 async function accessToken(config: SheetsConfig): Promise<string> {

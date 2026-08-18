@@ -17,6 +17,7 @@ describe("launchpad.template.json", () => {
       type: string;
       shape: string;
       active: boolean;
+      optionalRuntimeSecrets: string[];
       offlineConversionContract: {
         version: number;
         joinKey: string;
@@ -55,6 +56,7 @@ describe("launchpad.template.json", () => {
       type: "paid-funnel",
       shape: "A",
       active: true,
+      optionalRuntimeSecrets: ["ALERT_WEBHOOK_URL"],
       offlineConversionContract: {
         version: 1,
         joinKey: "leadUuid",
@@ -122,6 +124,15 @@ describe("launchpad.template.json", () => {
     >;
 
     expect(findManifestCredentialValues(manifest)).toEqual([]);
+
+    expect(
+      findManifestCredentialValues({
+        ...manifest,
+        optionalRuntimeSecrets: ["ALERT_WEBHOOK_URL", "GHL_WEBHOOK_URL"],
+      }),
+    ).toEqual([
+      "optionalRuntimeSecrets may contain optional secret names only",
+    ]);
 
     for (const field of [
       "credential",
