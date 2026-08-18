@@ -50,6 +50,12 @@ class TestDatabase {
   readonly statements: TestStatement[] = [];
   readonly batches: TestStatement[][] = [];
   existingEventId: string | null = null;
+  concurrentConflict = false;
+  private duplicatePrechecks = 0;
+  private releaseDuplicatePrechecks: (() => void) | null = null;
+  private readonly duplicatePrechecksReady = new Promise<void>((resolve) => {
+    this.releaseDuplicatePrechecks = resolve;
+  });
 
   prepare(sql: string) {
     return {
@@ -59,9 +65,15 @@ class TestDatabase {
           params,
           first: async <T>(): Promise<T | null> => {
             if (sql.includes("FROM downstream_conversions")) {
-              return (this.existingEventId
-                ? { event_id: this.existingEventId }
-                : null) as unknown as T | null;
+              if (this.existingEventId) {
+                return { event_id: this.existingEventId } as unknown as T;
+              }
+              if (this.concurrentConflict) {
+                this.duplicatePrechecks += 1;
+                if (this.duplicatePrechecks === 2) this.releaseDuplicatePrechecks?.();
+                await this.duplicatePrechecksReady;
+              }
+              return null;
             }
             if (sql.includes("FROM leads")) return leadRow as unknown as T;
             return null;
@@ -76,6 +88,14 @@ class TestDatabase {
 
   async batch(statements: TestStatement[]): Promise<unknown[]> {
     this.batches.push(statements);
+    if (this.concurrentConflict) {
+      const insertedEventId = String(statements[0]?.params[5]);
+      if (!this.existingEventId) {
+        this.existingEventId = insertedEventId;
+        return [];
+      }
+      throw new Error("D1_ERROR: UNIQUE constraint failed: downstream_conversions.external_id");
+    }
     return [];
   }
 }
@@ -296,6 +316,32 @@ describe("offline conversion callback", () => {
     });
     expect(database.batches).toHaveLength(0);
     expect(dispatchServerEventMock).not.toHaveBeenCalled();
+  });
+
+  it("treats a simultaneous idempotency conflict as duplicate success", async () => {
+    const database = new TestDatabase();
+    database.concurrentConflict = true;
+    const payload = {
+      leadUuid,
+      idempotencyKey: "crm-qualified-concurrent",
+      stage: "qualified",
+    };
+
+    const responses = await Promise.all([
+      postConversion(database, payload),
+      postConversion(database, payload),
+    ]);
+    const bodies = await Promise.all(
+      responses.map((response) => response.json() as Promise<Record<string, unknown>>),
+    );
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 202]);
+    expect(bodies.map((body) => body.duplicate).sort()).toEqual([false, true]);
+    expect(new Set(bodies.map((body) => body.eventId))).toEqual(
+      new Set([database.existingEventId]),
+    );
+    expect(database.batches).toHaveLength(2);
+    expect(dispatchServerEventMock).toHaveBeenCalledTimes(1);
   });
 });
 

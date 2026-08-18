@@ -14,6 +14,7 @@ import { deliverLeadToGhl, sendSubmissionAlert } from "../../../../../lib/lead-d
 import {
   ensureLeadRecord,
   markLeadStatus,
+  mergeFormLeadIntoExistingIdentity,
   syncPartialLead,
   updateValidatedContact,
 } from "../../../../../lib/lead-repository";
@@ -183,6 +184,10 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
   }
 
   session.contact = validation.contact;
+  if (validation.mergeLeadId && validation.mergeLeadId !== session.leadId) {
+    await mergeFormLeadIntoExistingIdentity(session, request, validation.mergeLeadId);
+    session.leadId = validation.mergeLeadId;
+  }
   session.leadStatus = "qualified";
   await saveFunnelSession(session);
   await updateValidatedContact(session);

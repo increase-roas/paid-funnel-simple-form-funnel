@@ -124,6 +124,84 @@ export async function updateValidatedContact(session: FunnelSession): Promise<vo
     .run();
 }
 
+export async function mergeFormLeadIntoExistingIdentity(
+  session: FunnelSession,
+  request: Request,
+  existingLeadId: string,
+): Promise<void> {
+  if (!session.leadId || !session.contact || session.leadId === existingLeadId) return;
+
+  const partialLeadId = session.leadId;
+  const now = new Date().toISOString();
+  const parkedSessionId = `merged:${partialLeadId}`;
+
+  await env.FUNNEL_DB.batch([
+    env.FUNNEL_DB.prepare(
+      "UPDATE leads SET session_id = ?, updated_at = ? WHERE id = ?",
+    ).bind(parkedSessionId, now, partialLeadId),
+    env.FUNNEL_DB.prepare(
+      "UPDATE tracking_events SET lead_id = ?, session_id = ? WHERE lead_id = ?",
+    ).bind(existingLeadId, session.sessionId, partialLeadId),
+    env.FUNNEL_DB.prepare(
+      "UPDATE downstream_conversions SET lead_id = ? WHERE lead_id = ?",
+    ).bind(existingLeadId, partialLeadId),
+    env.FUNNEL_DB.prepare(
+      `UPDATE leads SET
+        session_id = ?,
+        funnel_slug = ?,
+        status = 'qualified',
+        zip = ?,
+        answers_json = ?,
+        first_name = ?,
+        last_name = ?,
+        phone_raw = ?,
+        phone_e164 = ?,
+        email_raw = ?,
+        email_normalized = ?,
+        consent_json = ?,
+        first_url = ?,
+        original_query_string = ?,
+        fbc = COALESCE(fbc, ?),
+        fbp = COALESCE(fbp, ?),
+        city = COALESCE(city, ?),
+        state = COALESCE(state, ?),
+        country = COALESCE(country, ?),
+        ip_address = COALESCE(ip_address, ?),
+        user_agent = COALESCE(user_agent, ?),
+        conversion_value = ?,
+        completed_at = COALESCE(completed_at, ?),
+        updated_at = ?
+      WHERE id = ? AND source = 'phone'`,
+    ).bind(
+      session.sessionId,
+      funnelConfig.funnel.slug,
+      session.zip ?? null,
+      JSON.stringify(session.answers),
+      session.contact.firstName,
+      session.contact.lastName,
+      session.contact.phone,
+      session.contact.phone,
+      session.contact.email,
+      session.contact.email,
+      session.consent ? JSON.stringify(session.consent) : null,
+      session.firstUrl,
+      session.originalQueryString,
+      session.fbc ?? null,
+      session.fbp ?? null,
+      session.geo.city ?? null,
+      session.geo.state ?? null,
+      session.geo.country ?? null,
+      getClientIp(request) ?? null,
+      request.headers.get("user-agent"),
+      session.conversionValue ?? funnelConfig.meta.defaultConversionValue,
+      now,
+      now,
+      existingLeadId,
+    ),
+    env.FUNNEL_DB.prepare("DELETE FROM leads WHERE id = ?").bind(partialLeadId),
+  ]);
+}
+
 export async function markLeadStatus(
   leadId: string,
   status: "qualified" | "duplicate" | "rejected" | "delivered",

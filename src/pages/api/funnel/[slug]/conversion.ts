@@ -82,18 +82,20 @@ export async function handleConversion(
   }
   const leadUuid = input.data.leadUuid ?? input.data.leadId!;
 
+  const duplicateResponse = (eventId: string): Response => Response.json({
+    accepted: true,
+    duplicate: true,
+    eventId,
+    leadUuid,
+  });
+
   const existing = await env.FUNNEL_DB.prepare(
     "SELECT event_id FROM downstream_conversions WHERE external_id = ? LIMIT 1",
   )
     .bind(input.data.idempotencyKey)
     .first<{ event_id: string }>();
   if (existing) {
-    return Response.json({
-      accepted: true,
-      duplicate: true,
-      eventId: existing.event_id,
-      leadUuid,
-    });
+    return duplicateResponse(existing.event_id);
   }
 
   const lead = await env.FUNNEL_DB.prepare(
@@ -150,39 +152,49 @@ export async function handleConversion(
     lifecycle_stage: input.data.stage,
   };
 
-  await env.FUNNEL_DB.batch([
-    env.FUNNEL_DB.prepare(
-      `INSERT INTO downstream_conversions (
-        id, external_id, lead_id, stage, value, event_id, occurred_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      databaseId,
-      input.data.idempotencyKey,
-      lead.id,
-      input.data.stage,
-      conversionValue,
-      eventId,
-      new Date(eventTime * 1_000).toISOString(),
-      now,
-    ),
-    env.FUNNEL_DB.prepare(
-      `INSERT INTO tracking_events (
-        event_id, session_id, lead_id, event_name, source, event_time,
-        event_source_url, sequence, custom_data_json, capi_status,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'server', ?, ?, 1, ?, 'pending', ?, ?)`,
-    ).bind(
-      eventId,
-      lead.session_id,
-      lead.id,
-      eventName,
-      eventTime,
-      lead.first_url,
-      JSON.stringify(customData),
-      now,
-      now,
-    ),
-  ]);
+  try {
+    await env.FUNNEL_DB.batch([
+      env.FUNNEL_DB.prepare(
+        `INSERT INTO downstream_conversions (
+          id, external_id, lead_id, stage, value, event_id, occurred_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        databaseId,
+        input.data.idempotencyKey,
+        lead.id,
+        input.data.stage,
+        conversionValue,
+        eventId,
+        new Date(eventTime * 1_000).toISOString(),
+        now,
+      ),
+      env.FUNNEL_DB.prepare(
+        `INSERT INTO tracking_events (
+          event_id, session_id, lead_id, event_name, source, event_time,
+          event_source_url, sequence, custom_data_json, capi_status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'server', ?, ?, 1, ?, 'pending', ?, ?)`,
+      ).bind(
+        eventId,
+        lead.session_id,
+        lead.id,
+        eventName,
+        eventTime,
+        lead.first_url,
+        JSON.stringify(customData),
+        now,
+        now,
+      ),
+    ]);
+  } catch (error) {
+    const concurrent = await env.FUNNEL_DB.prepare(
+      "SELECT event_id FROM downstream_conversions WHERE external_id = ? LIMIT 1",
+    )
+      .bind(input.data.idempotencyKey)
+      .first<{ event_id: string }>();
+    if (concurrent) return duplicateResponse(concurrent.event_id);
+    throw error;
+  }
 
   const session: FunnelSession = {
     sessionId: lead.session_id,
