@@ -15,7 +15,20 @@ describe("deployment contract", () => {
     };
 
     expect(packageJson.scripts.deploy).toBe(
-      "npm run build && wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml && wrangler deploy --config wrangler.toml",
+      "npm run build && wrangler d1 migrations apply FUNNEL_DB --remote --config wrangler.toml && wrangler deploy --config dist/server/wrangler.json",
+    );
+  });
+
+  it("deploys Astro's generated Worker instead of rebundling raw Astro source", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(packageJson.scripts.deploy).toContain(
+      "wrangler deploy --config dist/server/wrangler.json",
+    );
+    expect(packageJson.scripts.deploy).not.toContain(
+      "wrangler deploy --config wrangler.toml",
     );
   });
 
